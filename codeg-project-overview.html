@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codeg — TUI Coding Agent Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg:       #1e1e2e;
+    --surface:  #313244;
+    --overlay:  #45475a;
+    --ink:      #cdd6f4;
+    --ink-soft: #a6adc8;
+    --muted:    #585b70;
+    --blue:     #89b4fa;
+    --green:    #a6e3a1;
+    --yellow:   #f9e2af;
+    --red:      #f38ba8;
+    --mauve:    #cba6f7;
+    --teal:     #94e2d5;
+    --peach:    #fab387;
+    --pink:     #f5c2e7;
+    --cyan:     #89dceb;
+    --white:    #ffffff;
+    --sans:  Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono:  ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); color: var(--ink); scroll-behavior: smooth; }
+  body { font: 16px/1.55 var(--sans); max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+
+  /* --- Typography --- */
+  h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; color: var(--white); margin-bottom: .3rem; }
+  .subtitle { font-size: 1.15rem; color: var(--ink-soft); margin-bottom: 2rem; }
+  h2 { font-size: 1.35rem; font-weight: 600; color: var(--blue); margin: 2.5rem 0 .75rem; padding-bottom: .4rem; border-bottom: 2px solid var(--overlay); }
+  h3 { font-size: 1.05rem; font-weight: 600; color: var(--mauve); margin: 1.5rem 0 .5rem; }
+  p { margin: .6rem 0; color: var(--ink); }
+  a { color: var(--teal); }
+
+  /* --- Stats bar --- */
+  .stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.5rem 0 2rem; }
+  .stat { background: var(--surface); border-radius: var(--radius); padding: .75rem 1.1rem; min-width: 100px; }
+  .stat .num { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
+  .stat .label { font-size: .78rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* --- Cards --- */
+  .capability-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin: 1rem 0; }
+  .cap-card { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; border-left: 3px solid var(--blue); }
+  .cap-card:nth-child(2) { border-left-color: var(--green); }
+  .cap-card:nth-child(3) { border-left-color: var(--mauve); }
+  .cap-card h3 { margin: 0 0 .5rem; font-size: .95rem; }
+  .cap-card p, .cap-card li { font-size: .88rem; color: var(--ink-soft); margin: .25rem 0; }
+  .cap-card ul { padding-left: 1.2rem; }
+  .cap-card code { color: var(--peach); }
+
+  /* --- Tables --- */
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .88rem; }
+  th { font-weight: 600; color: var(--blue); text-align: left; padding: .55rem .75rem; border-bottom: 2px solid var(--overlay); text-transform: uppercase; font-size: .75rem; letter-spacing: .04em; }
+  td { padding: .45rem .75rem; border-bottom: 1px solid var(--overlay); color: var(--ink-soft); }
+  tr:hover td { background: var(--surface); }
+  td:first-child { color: var(--ink); font-family: var(--mono); font-size: .82rem; }
+  .loc { text-align: right; font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+
+  /* --- TUI mockup --- */
+  .tui-mockup { background: var(--bg); border: 2px solid var(--overlay); border-radius: var(--radius); overflow: hidden; margin: 1.5rem 0; font-family: var(--mono); font-size: .78rem; line-height: 1.7; }
+  .tui-status { background: var(--blue); color: var(--bg); padding: .2rem .8rem; font-weight: 700; display: flex; justify-content: space-between; }
+  .tui-help { background: var(--surface); color: var(--muted); padding: .15rem .8rem; border-top: 1px solid var(--overlay); }
+  .tui-help strong { color: var(--blue); }
+  .tui-main { display: flex; }
+  .tui-left { width: 35%; border-right: 2px solid var(--overlay); }
+  .tui-right { width: 65%; }
+  .tui-title { padding: .3rem .8rem; color: var(--blue); font-weight: 700; border-bottom: 1px solid var(--overlay); }
+  .tui-row { padding: .15rem .8rem; }
+  .tui-row.selected { background: var(--overlay); }
+  .tui-pending { color: var(--muted); }
+  .tui-progress { color: var(--yellow); }
+  .tui-blocked { color: var(--red); }
+  .tui-done { color: var(--green); }
+  .tui-agent { border-top: 2px solid var(--overlay); padding: .5rem .8rem; }
+  .tui-agent .hdr { color: var(--green); font-weight: 700; margin-bottom: .3rem; }
+  .tui-agent .line { color: var(--ink-soft); }
+  .tui-agent .tool { color: var(--blue); }
+
+  /* --- Keybinding table --- */
+  .kb-table td:first-child { font-size: .82rem; }
+  .kb-table td:nth-child(2) { color: var(--peach); font-weight: 600; font-size: .85rem; }
+
+  /* --- Diagram containers --- */
+  .mermaid-wrap { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; margin: 1rem 0; overflow-x: auto; }
+  .mermaid-wrap .mermaid { display: flex; justify-content: center; }
+
+  /* --- Flow steps --- */
+  .flow-steps { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; align-items: center; }
+  .flow-step { background: var(--surface); border-radius: var(--radius); padding: .5rem 1rem; font-family: var(--mono); font-size: .8rem; color: var(--blue); font-weight: 600; white-space: nowrap; }
+  .flow-arrow { color: var(--muted); font-size: 1.2rem; }
+
+  /* --- Tech tags --- */
+  .tags { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 1.5rem; }
+  .tag { background: var(--surface); color: var(--teal); border-radius: 4px; padding: .25rem .65rem; font-size: .8rem; font-weight: 500; }
+
+  /* --- Responsive --- */
+  @media (max-width: 700px) {
+    body { padding: 1rem .75rem 4rem; }
+    h1 { font-size: 1.6rem; }
+    .tui-main { flex-direction: column; }
+    .tui-left, .tui-right { width: 100%; }
+    .flow-steps { gap: .4rem; }
+    .flow-step { font-size: .7rem; padding: .35rem .6rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>codeg</h1>
+<p class="subtitle">TUI Coding Agent Manager — manage tasks, bind directories, spawn AI coding agents, and watch their progress live. Built in Go with Bubble Tea.</p>
+
+<div class="stats">
+  <div class="stat"><div class="num">29</div><div class="label">Source Files</div></div>
+  <div class="stat"><div class="num">12</div><div class="label">Packages</div></div>
+  <div class="stat"><div class="num">5.4k</div><div class="label">Lines of Go</div></div>
+  <div class="stat"><div class="num">13MB</div><div class="label">Binary</div></div>
+</div>
+
+<div class="tags">
+  <span class="tag">Go 1.21</span>
+  <span class="tag">Bubble Tea</span>
+  <span class="tag">Lipgloss</span>
+  <span class="tag">Bubbles</span>
+  <span class="tag">SQLite</span>
+  <span class="tag">OpenAI API</span>
+  <span class="tag">OpenCode</span>
+  <span class="tag">ACP</span>
+  <span class="tag">SSE</span>
+</div>
+
+<!-- ── Architecture Diagram ── -->
+<h2>Architecture</h2>
+<div class="mermaid-wrap">
+<pre class="mermaid">
+graph TB
+    subgraph Entry
+        MAIN["cmd/codeg<br/>main.go"]
+    end
+
+    subgraph TUI["TUI Layer"]
+        APP["tui/app.go<br/>Bubble Tea Model"]
+        TL["components/task_list.go"]
+        TD["components/task_detail.go"]
+        CT["components/create_task.go"]
+        AP["components/agent_panel.go"]
+        SB["components/status_bar.go"]
+        HB["components/help_bar.go"]
+        ST["components/session_tree.go"]
+        DB["components/dashboard.go"]
+        STYLE["tui/styles.go"]
+        KEYS["tui/keys.go"]
+    end
+
+    subgraph Domain["Domain Layer"]
+        TM["task/manager.go<br/>TaskManager"]
+        TS["task/store.go<br/>SQLiteTaskStore"]
+        TMD["task/model.go"]
+        LLM["llm/openai.go<br/>OpenAIClient"]
+    end
+
+    subgraph Agent["Agent Layer"]
+        AC["agent/core/controller.go<br/>AgentController"]
+        RI["agent/runner.go<br/>AgentRunner interface"]
+        OPR["agent/opencode/runner.go<br/>OpenCodeRunner"]
+        ACPR["agent/acprunner/runner.go<br/>ACPRunner"]
+    end
+
+    subgraph ACP["ACP Protocol"]
+        ACPC["acp/client.go<br/>ACPClient"]
+        ACPT["acp/types.go"]
+    end
+
+    subgraph Infra["Infrastructure"]
+        CFG["config/config.go"]
+        SES["session/*<br/>Session Store"]
+    end
+
+    subgraph External["External"]
+        OC["opencode CLI<br/>(subprocess)"]
+        OAI["OpenAI API<br/>(summaries)"]
+        ACP_SRV["ACP Server<br/>(HTTP+SSE)"]
+        DB_FILE["SQLite DB<br/>~/.codeg/codeg.db"]
+    end
+
+    MAIN --> CFG
+    MAIN --> APP
+    MAIN --> TM
+    MAIN --> AC
+
+    APP --> TL & TD & CT & AP & SB & HB & ST
+    APP --> DB & STYLE & KEYS
+
+    TM --> TS & TMD & LLM
+    TS --> SES
+    TS --> DB_FILE
+    SES --> DB_FILE
+
+    AC --> RI
+    RI --> OPR & ACPR
+    OPR --> OC
+    ACPR --> ACPC
+    ACPC --> ACPT
+    ACPC --> ACP_SRV
+
+    LLM --> OAI
+
+    style Entry fill:#45475a,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4
+    style TUI fill:#313244,stroke:#cba6f7,stroke-width:1px,color:#cdd6f4
+    style Domain fill:#313244,stroke:#a6e3a1,stroke-width:1px,color:#cdd6f4
+    style Agent fill:#313244,stroke:#f9e2af,stroke-width:1px,color:#cdd6f4
+    style ACP fill:#313244,stroke:#f38ba8,stroke-width:1px,color:#cdd6f4
+    style Infra fill:#313244,stroke:#94e2d5,stroke-width:1px,color:#cdd6f4
+    style External fill:#1e1e2e,stroke:#585b70,stroke-width:1px,color:#a6adc8
+</pre>
+</div>
+
+<!-- ── Three capabilities ── -->
+<h2>Three Core Capabilities</h2>
+<div class="capability-grid">
+  <div class="cap-card">
+    <h3>1. Task Management</h3>
+    <p>Persistent task store backed by <strong>SQLite</strong> with full CRUD, status lifecycle, priority levels, labels, and bound directories.</p>
+    <ul>
+      <li><code>Task.SessionIDs</code> — links agent sessions to tasks</li>
+      <li><code>Task.BoundDirs</code> — multi-directory binding</li>
+      <li><code>CompleteTask()</code> → <strong>OpenAI</strong> summary generation</li>
+      <li>Status lifecycle: pending → in_progress → review → completed</li>
+    </ul>
+  </div>
+  <div class="cap-card">
+    <h3>2. Directory-Bound Coding Agents</h3>
+    <p>Each task binds multiple directories. The TUI spawns AI coding agents in those directories via two interchangeable backends:</p>
+    <ul>
+      <li><strong>OpenCode runner</strong> — spawns <code>opencode run</code> subprocess</li>
+      <li><strong>ACP runner</strong> — JSON-RPC 2.0 over HTTP with SSE streaming</li>
+      <li>Session IDs captured and linked to tasks</li>
+      <li>Cancel support via process kill or RPC cancel</li>
+    </ul>
+  </div>
+  <div class="cap-card">
+    <h3>3. Progress Dashboard</h3>
+    <p>Real-time Bubble Tea TUI showing all tasks and live agent output in a three-panel split layout.</p>
+    <ul>
+      <li><strong>Left</strong>: selectable task list with status-colored dots</li>
+      <li><strong>Right</strong>: task detail (objective, dirs, sessions, summary)</li>
+      <li><strong>Bottom</strong>: real-time agent output via <code>agentEvents</code> channel</li>
+      <li>Status bar with live task/agent counts</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── Data Flow ── -->
+<h2>Data Flow</h2>
+<div class="flow-steps">
+  <span class="flow-step">Keyboard</span><span class="flow-arrow">→</span>
+  <span class="flow-step">Bubble Tea Update</span><span class="flow-arrow">→</span>
+  <span class="flow-step">TaskManager</span><span class="flow-arrow">→</span>
+  <span class="flow-step">SQLite</span>
+</div>
+<div class="flow-steps" style="margin-top: .5rem;">
+  <span class="flow-step">Keyboard 'r'</span><span class="flow-arrow">→</span>
+  <span class="flow-step">runAgentCmd</span><span class="flow-arrow">→</span>
+  <span class="flow-step">AgentController.Start</span><span class="flow-arrow">→</span>
+  <span class="flow-step">OpenCodeRunner</span><span class="flow-arrow">→</span>
+  <span class="flow-step">opencode subprocess</span>
+</div>
+<div class="flow-steps" style="margin-top: .5rem;">
+  <span class="flow-step">opencode stdout</span><span class="flow-arrow">→</span>
+  <span class="flow-step">JSON parser</span><span class="flow-arrow">→</span>
+  <span class="flow-step">agentEvents chan</span><span class="flow-arrow">→</span>
+  <span class="flow-step">waitForAgentEvent()</span><span class="flow-arrow">→</span>
+  <span class="flow-step">AgentEventMsg</span><span class="flow-arrow">→</span>
+  <span class="flow-step">agentPanel.Update</span>
+</div>
+
+<!-- ── TUI Layout Mockup ── -->
+<h2>TUI Layout</h2>
+<div class="tui-mockup">
+  <div class="tui-status">
+    <span>codeg | 4 tasks | 1 running | dashboard</span>
+    <span>q: quit</span>
+  </div>
+  <div class="tui-main">
+    <div class="tui-left">
+      <div class="tui-title">Tasks</div>
+      <div class="tui-row selected">
+        <span class="tui-progress">●</span>
+        <span class="tui-progress">▲</span> Implement auth module
+      </div>
+      <div class="tui-row">
+        <span class="tui-pending">●</span>
+        <span>●</span> Fix login redirect bug
+      </div>
+      <div class="tui-row">
+        <span class="tui-blocked">●</span>
+        <span class="tui-progress">▲</span> Deploy to staging env
+      </div>
+      <div class="tui-row">
+        <span class="tui-done">●</span>
+        <span>●</span> Refactor database layer
+      </div>
+    </div>
+    <div class="tui-right">
+      <div class="tui-title">Task Detail</div>
+      <div class="tui-row" style="color:var(--mauve); font-weight:700;">Implement auth module</div>
+      <div class="tui-row"><strong style="color:var(--blue)">Status:</strong> <span class="tui-progress">IN PROGRESS</span></div>
+      <div class="tui-row"><strong style="color:var(--blue)">Priority:</strong> high</div>
+      <div class="tui-row" style="margin-top:.3rem;"><strong style="color:var(--blue)">Bound Directories</strong> (2)</div>
+      <div class="tui-row" style="color:var(--green);">  /home/user/project/backend</div>
+      <div class="tui-row" style="color:var(--green);">  /home/user/project/frontend</div>
+      <div class="tui-row" style="margin-top:.3rem;"><strong style="color:var(--blue)">Sessions</strong> (1)</div>
+      <div class="tui-row" style="color:var(--ink-soft);">  • ses_16079a65…</div>
+    </div>
+  </div>
+  <div class="tui-agent">
+    <div class="hdr">Agent Output <span style="color:var(--yellow);">(running…)</span></div>
+    <div class="line">--- agent started ---</div>
+    <div class="tool">[tool] read</div>
+    <div class="line">  Reading auth/service.go…</div>
+    <div class="tool">[tool] grep</div>
+    <div class="line">  Found 3 files matching "middleware"</div>
+    <div class="line" style="color:var(--green);">--- turn complete ---</div>
+  </div>
+  <div class="tui-help">
+    <strong>q</strong> quit <strong>n</strong> new <strong>r</strong> run <strong>c</strong> cancel <strong>f</strong> finish <strong>b</strong> bind <strong>d</strong> delete <strong>1/2/3</strong> focus <strong>↑/↓</strong> nav
+  </div>
+</div>
+
+<!-- ── Package Table ── -->
+<h2>Package Structure</h2>
+<table>
+  <thead><tr><th>Package</th><th>Files</th><th class="loc">Lines</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><strong>cmd/codeg</strong></td><td>main.go</td><td class="loc">109</td><td>Entry point — config loading, wiring all services, Bubble Tea program launch</td></tr>
+    <tr><td><strong>tui</strong></td><td>app.go, styles.go, keys.go</td><td class="loc">785</td><td>Bubble Tea Model — state machine, keybinding dispatch, agent event loop</td></tr>
+    <tr><td><strong>tui/components</strong></td><td>dashboard.go, task_list.go, task_detail.go, create_task.go, agent_panel.go, status_bar.go, help_bar.go, session_tree.go</td><td class="loc">1,081</td><td>UI components — 3-panel layout, selectable list, detail view, modal forms</td></tr>
+    <tr><td><strong>task</strong></td><td>model.go, store.go, manager.go</td><td class="loc">686</td><td>Task CRUD, SQLite persistence (4 tables), status lifecycle, directory binding</td></tr>
+    <tr><td><strong>llm</strong></td><td>client.go, openai.go</td><td class="loc">165</td><td>LLM Client interface + OpenAI Chat &amp; Summarize via <code>net/http</code></td></tr>
+    <tr><td><strong>agent</strong></td><td>runner.go</td><td class="loc">21</td><td><code>AgentRunner</code> interface — Start(cwd, prompt) → events, cancel</td></tr>
+    <tr><td><strong>agent/core</strong></td><td>controller.go</td><td class="loc">126</td><td>Agent lifecycle — start, track, cancel; dir validation, duplicate prevention</td></tr>
+    <tr><td><strong>agent/opencode</strong></td><td>runner.go</td><td class="loc">208</td><td>OpenCode subprocess runner — JSON event parsing, session ID capture</td></tr>
+    <tr><td><strong>agent/acprunner</strong></td><td>runner.go</td><td class="loc">65</td><td>ACP runner — JSON-RPC 2.0 + SSE for remote agent servers</td></tr>
+    <tr><td><strong>acp</strong></td><td>client.go, types.go</td><td class="loc">341</td><td>ACP JSON-RPC 2.0 client — session CRUD, SSE streaming, event parsing</td></tr>
+    <tr><td><strong>config</strong></td><td>config.go</td><td class="loc">92</td><td>Config loading from <code>~/.codeg/config.json</code> + env var overrides</td></tr>
+    <tr><td><strong>session</strong> <span style="color:var(--muted);font-size:.8rem;">(existing)</span></td><td>session.go, manager.go, manager_impl.go, sqlite_store.go, util.go</td><td class="loc">1,613</td><td>Session data model — tree-structured append-only entries, SQLite persistence</td></tr>
+    <tr style="border-top:2px solid var(--overlay);"><td><strong>Total</strong></td><td><strong>29 files</strong></td><td class="loc"><strong>5,292</strong></td><td></td></tr>
+  </tbody>
+</table>
+
+<!-- ── Keybindings ── -->
+<h2>Keybindings</h2>
+<table class="kb-table">
+  <thead><tr><th>Key</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>↑</code>/<code>↓</code> / <code>j</code>/<code>k</code></td><td>Navigate</td><td>Move selection up/down in task list</td></tr>
+    <tr><td><code>n</code></td><td>New task</td><td>Open modal form — enter title + objective</td></tr>
+    <tr><td><code>r</code></td><td>Run agent</td><td>Spawn opencode in task's first bound directory</td></tr>
+    <tr><td><code>c</code></td><td>Cancel agent</td><td>Kill running agent subprocess</td></tr>
+    <tr><td><code>f</code></td><td>Finish task</td><td>Mark complete → trigger OpenAI summary generation</td></tr>
+    <tr><td><code>b</code></td><td>Bind directory</td><td>Add working directory to selected task</td></tr>
+    <tr><td><code>d</code></td><td>Delete task</td><td>Delete with confirmation dialog</td></tr>
+    <tr><td><code>1</code>/<code>2</code>/<code>3</code></td><td>Focus panel</td><td>Focus task list / detail / agent output</td></tr>
+    <tr><td><code>Enter</code></td><td>Select</td><td>View task detail</td></tr>
+    <tr><td><code>Tab</code></td><td>Next field</td><td>Switch form fields (create form)</td></tr>
+    <tr><td><code>Esc</code></td><td>Cancel</td><td>Close modal / go back</td></tr>
+    <tr><td><code>q</code></td><td>Quit</td><td>Exit the TUI</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Data Persistence Diagram ── -->
+<h2>Data Persistence</h2>
+<div class="mermaid-wrap">
+<pre class="mermaid">
+erDiagram
+    tasks {
+        string id PK
+        string title
+        string objective
+        string status
+        string priority
+        string summary
+        datetime created_at
+        datetime updated_at
+        datetime completed_at
+    }
+    task_directories {
+        string task_id FK
+        string path
+        string label
+        datetime added_at
+    }
+    task_sessions {
+        string task_id FK
+        string session_id
+        datetime created_at
+    }
+    task_labels {
+        string task_id FK
+        string label
+    }
+    sessions {
+        string id PK
+        int version
+        string cwd
+        string name
+        string parent_session
+        datetime created_at
+        datetime updated_at
+    }
+    entries {
+        string id PK
+        string session_id FK
+        string type
+        string parent_id FK
+        datetime timestamp
+        text data
+    }
+    tasks ||--o{ task_directories : "bound dirs"
+    tasks ||--o{ task_sessions : "linked sessions"
+    tasks ||--o{ task_labels : "labels"
+    task_sessions }o--|| sessions : "session"
+    sessions ||--o{ entries : "entries"
+</pre>
+</div>
+
+<!-- ── How to run ── -->
+<h2>How to Run</h2>
+<pre style="font-size:.82rem; padding:1rem 1.25rem;">cd ~/Documents/code/coding-agent
+
+# Optional: set OpenAI key for task summaries
+export OPENAI_API_KEY="sk-..."
+
+# Optional: point to ACP server
+export CODEG_ACP_URL="http://localhost:3000/api/acp"
+
+# Build and run
+go build -o bin/codeg ./cmd/codeg
+./bin/codeg
+
+# Or with debug logging
+./bin/codeg --debug</pre>
+
+<p style="color:var(--ink-soft); font-size:.82rem; margin-top:.75rem;">
+  The TUI works standalone for task management without any external services.
+  Pressing <code>r</code> on a task with bound directories spawns <code>opencode</code>
+  (must be installed; uses its own provider config at
+  <code>~/.local/share/opencode/auth.json</code>). Task summaries require
+  <code>OPENAI_API_KEY</code>. ACP server is optional — the default backend is
+  the opencode subprocess runner.
+</p>
+
+<hr style="border: none; border-top: 1px solid var(--overlay); margin: 3rem 0 1rem;">
+
+<p style="font-size:.78rem; color:var(--muted);">
+  codeg · TUI Coding Agent Manager · 29 Go files · 12 packages · 5,292 lines<br>
+  Built with <span style="color:var(--blue);">Bubble Tea</span> +
+  <span style="color:var(--mauve);">Lipgloss</span> +
+  <span style="color:var(--green);">SQLite</span> ·
+  Catppuccin Mocha theme
+</p>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: {
+  darkMode: true,
+  background: '#1e1e2e',
+  primaryColor: '#89b4fa',
+  primaryTextColor: '#1e1e2e',
+  primaryBorderColor: '#89b4fa',
+  lineColor: '#585b70',
+  secondaryColor: '#313244',
+  tertiaryColor: '#45475a',
+  textColor: '#cdd6f4',
+  nodeBorder: '#45475a',
+  clusterBkg: '#313244',
+  clusterBorder: '#45475a',
+  titleColor: '#cba6f7',
+  edgeLabelBackground: '#313244',
+  fontSize: '14px'
+}});</script>
+
+</body>
+</html>
