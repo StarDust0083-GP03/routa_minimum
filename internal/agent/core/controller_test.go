@@ -15,7 +15,7 @@ type mockRunner struct {
 	startErr    error
 }
 
-func (m *mockRunner) Start(ctx context.Context, cwd, prompt string) (*agent.StartResult, error) {
+func (m *mockRunner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRole) (*agent.StartResult, error) {
 	return m.startResult, m.startErr
 }
 

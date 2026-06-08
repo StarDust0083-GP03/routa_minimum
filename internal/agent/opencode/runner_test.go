@@ -98,7 +98,7 @@ func TestStart(t *testing.T) {
 	server, runner := setupMockACPServer(t)
 	defer server.Close()
 
-	result, err := runner.Start(context.Background(), "/project/test", "Write a function")
+	result, err := runner.Start(context.Background(), "/project/test", "Write a function", acp.RoleDeveloper)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestStart_Cancel(t *testing.T) {
 	server, runner := setupMockACPServer(t)
 	defer server.Close()
 
-	result, err := runner.Start(context.Background(), "/project", "test prompt")
+	result, err := runner.Start(context.Background(), "/project", "test prompt", acp.RoleDeveloper)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestStart_StreamsEvents(t *testing.T) {
 	server, runner := setupMockACPServer(t)
 	defer server.Close()
 
-	result, err := runner.Start(context.Background(), "/project", "prompt")
+	result, err := runner.Start(context.Background(), "/project", "prompt", acp.RoleDeveloper)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}

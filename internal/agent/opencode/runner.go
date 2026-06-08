@@ -23,8 +23,12 @@ func NewRunner(serverURL string) *Runner {
 }
 
 // Start creates an ACP session via opencode serve, sends a prompt, and streams SSE events.
-func (r *Runner) Start(ctx context.Context, cwd, prompt string) (*agent.StartResult, error) {
+func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRole) (*agent.StartResult, error) {
 	sessionID := fmt.Sprintf("codeg-session-%d", time.Now().UnixNano())
+
+	if role == "" {
+		role = acp.RoleDeveloper
+	}
 
 	// Initialize ACP handshake (idempotent, non-fatal if unsupported)
 	r.client.Initialize(ctx)
@@ -33,7 +37,7 @@ func (r *Runner) Start(ctx context.Context, cwd, prompt string) (*agent.StartRes
 	sessionResp, err := r.client.CreateSession(ctx, acp.SessionNewParams{
 		SessionID:   sessionID,
 		WorkspaceID: "codeg",
-		Role:        string(acp.RoleDeveloper),
+		Role:        string(role),
 		Cwd:         cwd,
 	})
 	if err != nil {

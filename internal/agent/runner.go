@@ -16,8 +16,8 @@ type StartResult struct {
 
 // AgentRunner is the interface for running coding agents.
 type AgentRunner interface {
-	// Start launches a coding agent in the given directory with a prompt.
-	Start(ctx context.Context, cwd, prompt string) (*StartResult, error)
+	// Start launches a coding agent in the given directory with a prompt and role.
+	Start(ctx context.Context, cwd, prompt string, role acp.AgentRole) (*StartResult, error)
 
 	// Resume reconnects to an existing session and continues streaming.
 	Resume(ctx context.Context, sessionID string) (*StartResult, error)

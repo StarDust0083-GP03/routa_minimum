@@ -80,7 +80,7 @@ func (c *AgentController) startPhase(
 	}
 	c.mu.RUnlock()
 
-	result, err := c.runner.Start(ctx, cwd, prompt)
+	result, err := c.runner.Start(ctx, cwd, prompt, role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start %s agent: %w", phase, err)
 	}
