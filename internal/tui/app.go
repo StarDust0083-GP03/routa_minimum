@@ -173,13 +173,57 @@ func (m *Model) planTaskCmd(taskObj *task.Task) tea.Cmd {
 		if m.taskManager.SubTasks() == nil {
 			return plansLoadedMsg{taskID: taskObj.ID, err: fmt.Errorf("sub-task manager not initialized")}
 		}
-		planner := task.NewPlanner(m.taskManager.GetLLMClient(), "")
-		plans, err := planner.DecomposeTask(ctx, taskObj)
-		if err != nil {
-			return plansLoadedMsg{taskID: taskObj.ID, err: err}
+
+		// Try ACP-based planning first
+		plans, err := m.planViaACP(ctx, taskObj)
+		if err == nil {
+			return plansLoadedMsg{taskID: taskObj.ID, plans: plans}
+		}
+
+		// Fallback to OpenAI API if ACP fails or is unavailable
+		llmClient := m.taskManager.GetLLMClient()
+		if llmClient == nil {
+			return plansLoadedMsg{taskID: taskObj.ID, err: fmt.Errorf("ACP planning failed and no LLM client configured: %w", err)}
+		}
+		planner := task.NewPlanner(llmClient, "")
+		plans, llmErr := planner.DecomposeTask(ctx, taskObj)
+		if llmErr != nil {
+			return plansLoadedMsg{taskID: taskObj.ID, err: fmt.Errorf("ACP: %w; LLM fallback: %w", err, llmErr)}
 		}
 		return plansLoadedMsg{taskID: taskObj.ID, plans: plans}
 	}
+}
+
+// planViaACP uses an ACP agent session to decompose a task into sub-tasks.
+func (m *Model) planViaACP(ctx context.Context, taskObj *task.Task) ([]task.SubTaskPlan, error) {
+	// Build the planning prompt
+	systemPrompt, userMsg := task.BuildPlanningPrompt(taskObj)
+	prompt := systemPrompt + "\n\n" + userMsg
+
+	// Determine working directory
+	cwd := "/tmp"
+	if len(taskObj.BoundDirs) > 0 {
+		cwd = taskObj.BoundDirs[0].Path
+	}
+
+	// Start a short-lived ACP session for planning
+	result, err := m.agentController.PlanWithACP(ctx, cwd, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("ACP plan session: %w", err)
+	}
+
+	// Parse the agent's JSON response
+	plans, err := task.ParsePlans(result)
+	if err != nil {
+		return nil, fmt.Errorf("parse ACP plan response: %w", err)
+	}
+
+	// Assign order indices
+	for i := range plans {
+		plans[i].OrderIndex = i + 1
+	}
+
+	return plans, nil
 }
 
 func (m *Model) createSubTasksCmd(taskID string, plans []task.SubTaskPlan) tea.Cmd {

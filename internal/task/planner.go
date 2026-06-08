@@ -13,7 +13,7 @@ import (
 // Planner uses an LLM to decompose tasks into sub-tasks.
 type Planner struct {
 	client llm.Client
-	model  string // optional model override for planning
+	model  string
 }
 
 // NewPlanner creates a new task planner.
@@ -21,14 +21,10 @@ func NewPlanner(client llm.Client, model string) *Planner {
 	return &Planner{client: client, model: model}
 }
 
-// DecomposeTask sends the task objective and bound directories to the LLM
-// and returns a structured list of sub-task plans.
-func (p *Planner) DecomposeTask(ctx context.Context, task *Task) ([]SubTaskPlan, error) {
-	if p.client == nil {
-		return nil, fmt.Errorf("no LLM client configured for planning")
-	}
-
-	systemPrompt := `You are a technical project planner. Given a task objective and a list of available
+// BuildPlanningPrompt returns the system prompt and user message for task decomposition.
+// The caller can send these to any LLM backend (OpenAI API, ACP agent, etc.).
+func BuildPlanningPrompt(task *Task) (systemPrompt string, userMessage string) {
+	systemPrompt = `You are a technical project planner. Given a task objective and a list of available
 working directories, decompose the work into ordered sub-tasks.
 
 Each sub-task must:
@@ -42,9 +38,8 @@ Return ONLY a JSON array of objects with these exact keys:
 - "description": what needs to be built (2-3 sentences)
 - "directory": one of the provided directories
 
-Do not include any text outside the JSON array.`
+Do not include any text outside the JSON array. Do NOT use any tools — just output the JSON directly.`
 
-	// Build directory list for the prompt
 	var dirList strings.Builder
 	dirList.WriteString("Available directories:\n")
 	for i, d := range task.BoundDirs {
@@ -54,14 +49,23 @@ Do not include any text outside the JSON array.`
 		}
 		dirList.WriteString(fmt.Sprintf("%d. %s (%s)\n", i+1, d.Path, label))
 	}
-
-	// If no bound dirs, suggest using a common workspace
 	if len(task.BoundDirs) == 0 {
 		dirList.WriteString("(No directories bound — suggest a reasonable directory name)\n")
 	}
 
-	userMsg := fmt.Sprintf("Task: %s\nObjective: %s\n\n%s\n\nDecompose this task into sub-tasks.",
+	userMessage = fmt.Sprintf("Task: %s\nObjective: %s\n\n%s\n\nDecompose this task into sub-tasks.",
 		task.Title, task.Objective, dirList.String())
+	return
+}
+
+// DecomposeTask sends the task objective and bound directories to the LLM
+// and returns a structured list of sub-task plans.
+func (p *Planner) DecomposeTask(ctx context.Context, task *Task) ([]SubTaskPlan, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("no LLM client configured for planning")
+	}
+
+	systemPrompt, userMsg := BuildPlanningPrompt(task)
 
 	messages := []llm.Message{
 		{Role: "user", Content: userMsg},
@@ -72,22 +76,19 @@ Do not include any text outside the JSON array.`
 		return nil, fmt.Errorf("LLM decomposition failed: %w", err)
 	}
 
-	// Parse JSON response
-	plans, err := parsePlans(response)
+	plans, err := ParsePlans(response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LLM response: %w\nResponse was: %s", err, truncate(response, 500))
 	}
-
-	// Assign order indices
 	for i := range plans {
 		plans[i].OrderIndex = i + 1
 	}
-
 	return plans, nil
 }
 
-// parsePlans extracts SubTaskPlan from LLM JSON response.
-func parsePlans(response string) ([]SubTaskPlan, error) {
+// ParsePlans extracts SubTaskPlan from an LLM/agent JSON response.
+// Handles markdown code fences, leading/trailing text, and empty responses.
+func ParsePlans(response string) ([]SubTaskPlan, error) {
 	// Strip markdown code fences if present
 	response = strings.TrimSpace(response)
 	response = strings.TrimPrefix(response, "```json")

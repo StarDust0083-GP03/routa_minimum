@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"codeg/internal/acp"
@@ -151,6 +152,40 @@ func (c *AgentController) IsRunning(subTaskID string) bool {
 	defer c.mu.RUnlock()
 	_, exists := c.handles[subTaskID]
 	return exists
+}
+
+// PlanWithACP runs a short-lived ACP session for task decomposition.
+// It starts a session, collects all agent output, cancels the session,
+// and returns the full response text for parsing.
+func (c *AgentController) PlanWithACP(ctx context.Context, cwd, prompt string) (string, error) {
+	result, err := c.runner.Start(ctx, cwd, prompt, acp.RoleDeveloper)
+	if err != nil {
+		return "", fmt.Errorf("start plan session: %w", err)
+	}
+	defer func() { _ = result.Cancel() }()
+
+	var response strings.Builder
+	for evt := range result.Events {
+		if evt.Type == acp.EventMessageChunk {
+			if text, ok := evt.Data["text"].(string); ok {
+				response.WriteString(text)
+			}
+		}
+		if evt.Type == acp.EventSessionError {
+			if errMsg, ok := evt.Data["message"].(string); ok {
+				return response.String(), fmt.Errorf("ACP plan error: %s", errMsg)
+			}
+		}
+		if evt.Type == acp.EventTurnComplete {
+			break
+		}
+	}
+
+	resultStr := response.String()
+	if resultStr == "" {
+		return "", fmt.Errorf("agent returned empty response for planning")
+	}
+	return resultStr, nil
 }
 
 // buildCodingPrompt creates the prompt for the coding phase.

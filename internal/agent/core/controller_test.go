@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"codeg/internal/acp"
@@ -351,4 +352,87 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+
+func TestPlanWithACP_Success(t *testing.T) {
+	ch := make(chan acp.SSEEvent, 5)
+	ch <- acp.SSEEvent{
+		Type: acp.EventMessageChunk,
+		Data: map[string]interface{}{"text": "[{\"title\":\"Test\",\"description\":\"desc\",\"directory\":\"/dir\"}]"},
+	}
+	ch <- acp.SSEEvent{Type: acp.EventTurnComplete, Data: map[string]interface{}{}}
+	close(ch)
+
+	runner := &mockRunner{
+		startResult: &agent.StartResult{
+			SessionID: "ses-plan",
+			Events:    ch,
+			Cancel:    func() error { return nil },
+		},
+	}
+	ctrl := NewAgentController(runner)
+
+	response, err := ctrl.PlanWithACP(context.Background(), "/tmp", "Plan a task")
+	if err != nil {
+		t.Fatalf("PlanWithACP failed: %v", err)
+	}
+	if response == "" {
+		t.Error("expected non-empty response")
+	}
+}
+
+func TestPlanWithACP_Error(t *testing.T) {
+	runner := &mockRunner{
+		startErr: errors.New("server down"),
+	}
+	ctrl := NewAgentController(runner)
+
+	_, err := ctrl.PlanWithACP(context.Background(), "/tmp", "Plan")
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestPlanWithACP_ACPError(t *testing.T) {
+	ch := make(chan acp.SSEEvent, 2)
+	ch <- acp.SSEEvent{
+		Type: acp.EventSessionError,
+		Data: map[string]interface{}{"message": "model not found"},
+	}
+	close(ch)
+
+	runner := &mockRunner{
+		startResult: &agent.StartResult{
+			SessionID: "ses-err",
+			Events:    ch,
+			Cancel:    func() error { return nil },
+		},
+	}
+	ctrl := NewAgentController(runner)
+
+	_, err := ctrl.PlanWithACP(context.Background(), "/tmp", "Plan")
+	if err == nil {
+		t.Error("expected error for ACP session error")
+	}
+}
+
+func TestPlanWithACP_EmptyResponse(t *testing.T) {
+	ch := make(chan acp.SSEEvent, 1)
+	ch <- acp.SSEEvent{Type: acp.EventTurnComplete, Data: map[string]interface{}{}}
+	close(ch)
+
+	runner := &mockRunner{
+		startResult: &agent.StartResult{
+			SessionID: "ses-empty",
+			Events:    ch,
+			Cancel:    func() error { return nil },
+		},
+	}
+	ctrl := NewAgentController(runner)
+
+	_, err := ctrl.PlanWithACP(context.Background(), "/tmp", "Plan")
+	if err == nil {
+		t.Error("expected error for empty agent response")
+	}
 }

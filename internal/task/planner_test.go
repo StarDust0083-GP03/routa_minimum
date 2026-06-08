@@ -33,9 +33,9 @@ func TestParsePlans_ValidJSON(t *testing.T) {
 		{"title": "Login page", "description": "Create login form", "directory": "/frontend"}
 	]`
 
-	plans, err := parsePlans(response)
+	plans, err := ParsePlans(response)
 	if err != nil {
-		t.Fatalf("parsePlans failed: %v", err)
+		t.Fatalf("ParsePlans failed: %v", err)
 	}
 
 	if len(plans) != 2 {
@@ -52,9 +52,9 @@ func TestParsePlans_ValidJSON(t *testing.T) {
 func TestParsePlans_MarkdownCodeFence(t *testing.T) {
 	response := "```json\n[\n  {\"title\": \"Test\", \"description\": \"desc\", \"directory\": \"/dir\"}\n]\n```"
 
-	plans, err := parsePlans(response)
+	plans, err := ParsePlans(response)
 	if err != nil {
-		t.Fatalf("parsePlans failed: %v", err)
+		t.Fatalf("ParsePlans failed: %v", err)
 	}
 	if len(plans) != 1 {
 		t.Fatalf("expected 1 plan, got %d", len(plans))
@@ -62,14 +62,14 @@ func TestParsePlans_MarkdownCodeFence(t *testing.T) {
 }
 
 func TestParsePlans_NoJSONArray(t *testing.T) {
-	_, err := parsePlans("no json here")
+	_, err := ParsePlans("no json here")
 	if err == nil {
 		t.Error("expected error for non-JSON input")
 	}
 }
 
 func TestParsePlans_EmptyArray(t *testing.T) {
-	_, err := parsePlans("[]")
+	_, err := ParsePlans("[]")
 	if err == nil {
 		t.Error("expected error for empty array")
 	}
