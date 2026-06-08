@@ -242,8 +242,8 @@ func TestACPClientHTTPMock(t *testing.T) {
 func TestACPServerConfig_Defaults(t *testing.T) {
 	cfg := ACPServerConfig{}
 
-	if cmd := cfg.DefaultCommand(); cmd != "opencode serve" {
-		t.Errorf("expected default command 'opencode serve', got %q", cmd)
+	if cmd := cfg.DefaultCommand(); cmd != "opencode acp" {
+		t.Errorf("expected default command 'opencode acp', got %q", cmd)
 	}
 	if flag := cfg.DefaultPortFlag(); flag != "--port" {
 		t.Errorf("expected default port flag '--port', got %q", flag)
@@ -272,8 +272,8 @@ func TestACPServerConfig_CommandArgs_Default(t *testing.T) {
 	if binary != "opencode" {
 		t.Errorf("expected binary 'opencode', got %q", binary)
 	}
-	if len(args) != 1 || args[0] != "serve" {
-		t.Errorf("expected args ['serve'], got %v", args)
+	if len(args) != 1 || args[0] != "acp" {
+		t.Errorf("expected args ['acp'], got %v", args)
 	}
 }
 
@@ -335,7 +335,7 @@ func TestSplitCommand_Spaces(t *testing.T) {
 func TestACPServerConfig_CommandArgs_EmptyCommand(t *testing.T) {
 	cfg := ACPServerConfig{Command: ""}
 	binary, args := cfg.CommandArgs()
-	if binary != "opencode" || len(args) != 1 || args[0] != "serve" {
-		t.Errorf("expected fallback to opencode serve, got %s %v", binary, args)
+	if binary != "opencode" || len(args) != 1 || args[0] != "acp" {
+		t.Errorf("expected fallback to opencode acp, got %s %v", binary, args)
 	}
 }

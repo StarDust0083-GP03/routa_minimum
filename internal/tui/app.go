@@ -749,19 +749,23 @@ func (m *Model) handleDashboardKey(msg tea.KeyMsg, cmds *[]tea.Cmd) (tea.Model, 
 		*cmds = append(*cmds, m.createForm.Init())
 
 	case "p":
-		if t := m.taskList.SelectedTask(); t != nil {
+		if t := m.taskList.SelectedTask(); t == nil {
+			m.errorMsg = "No task selected \u2014 use arrow keys to select a task first"
+		} else if t := m.taskList.SelectedTask(); t != nil {
 			if !t.Status.IsActive() {
 				m.errorMsg = "Task is not active (status: " + string(t.Status) + ")"
 			} else {
 				m.mode = ModePlan
 				m.planMode = components.NewPlanMode(t.ID, t.Title)
-				m.errorMsg = "Decomposing task..."
+				m.errorMsg = "Decomposing \"" + t.Title + "\" via ACP..."
 				*cmds = append(*cmds, m.planTaskCmd(t))
 			}
 		}
 
 	case "r":
-		if t := m.taskList.SelectedTask(); t != nil {
+		if t := m.taskList.SelectedTask(); t == nil {
+			m.errorMsg = "No task selected \u2014 use arrow keys to select a task first"
+		} else if t := m.taskList.SelectedTask(); t != nil {
 			if m.activeSubID != "" {
 				m.errorMsg = fmt.Sprintf("Agent already running for sub-task: %s", m.activeSubID)
 			} else if m.taskManager.SubTasks() != nil {
@@ -772,6 +776,7 @@ func (m *Model) handleDashboardKey(msg tea.KeyMsg, cmds *[]tea.Cmd) (tea.Model, 
 				}
 				if st != nil {
 					if st.Status == task.SubTaskPlanned {
+						m.errorMsg = fmt.Sprintf("Starting coding for \"%s\"...", st.Title)
 						*cmds = append(*cmds, m.runSubTaskCodingCmd(st, t))
 					} else {
 						m.errorMsg = fmt.Sprintf("Sub-task status is %s, not planned", st.Status)
@@ -788,6 +793,7 @@ func (m *Model) handleDashboardKey(msg tea.KeyMsg, cmds *[]tea.Cmd) (tea.Model, 
 		if t := m.taskList.SelectedTask(); t != nil {
 			st := m.subTaskList.SelectedSubTask()
 			if st != nil && m.activeSubID == "" {
+				m.errorMsg = fmt.Sprintf("Starting verification for \"%s\"...", st.Title)
 				*cmds = append(*cmds, m.runSubTaskVerifyCmd(st, t))
 			} else {
 				m.errorMsg = "No sub-task selected or agent already running"
@@ -925,7 +931,8 @@ func (m Model) View() string {
 	}
 
 	runningCount := len(m.agentController.RunningSubTasks())
-	statusBar := components.StatusBar(m.width, len(m.tasks), len(m.subTasks), runningCount, string(m.mode), m.errorMsg)
+	statusBar := components.StatusBar(m.width, len(m.tasks), len(m.subTasks), runningCount, string(m.mode), "")
+	statusLine := m.renderStatusLine()
 	helpBar := m.renderHelpBar()
 
 	taskListWidth := m.width / 4
@@ -970,7 +977,7 @@ func (m Model) View() string {
 		Render(m.agentPanel.View())
 
 	mainArea := lipgloss.JoinVertical(lipgloss.Left, topRow, agentStyled)
-	result := lipgloss.JoinVertical(lipgloss.Left, statusBar, mainArea, helpBar)
+	result := lipgloss.JoinVertical(lipgloss.Left, statusBar, mainArea, statusLine, helpBar)
 
 	if m.mode == ModeConfirm {
 		result = m.overlayConfirm()
@@ -980,6 +987,52 @@ func (m Model) View() string {
 	}
 	return result
 }
+
+func (m *Model) renderStatusLine() string {
+	var msg string
+	switch {
+	case m.errorMsg != "":
+		msg = m.errorMsg
+	case m.activeSubID != "" && m.activePhase == task.PhaseCoding:
+		msg = fmt.Sprintf("● Coding in progress... [c] cancel")
+	case m.activeSubID != "" && m.activePhase == task.PhaseVerifying:
+		msg = fmt.Sprintf("◷ Verifying in progress... [c] cancel")
+	case m.activeSubID == "" && len(m.subTasks) > 0:
+		sel := m.subTaskList.SelectedSubTask()
+		if sel != nil && sel.Status == task.SubTaskStuck {
+			msg = fmt.Sprintf("⚠ Stuck — press [r] to retry \"%s\"", sel.Title)
+		} else if sel != nil && sel.Status == task.SubTaskPlanned {
+			msg = fmt.Sprintf("▶ Ready — press [r] to run \"%s\"", sel.Title)
+		} else {
+			msg = "Press [p] to plan sub-tasks, [r] to run"
+		}
+	case len(m.subTasks) == 0 && len(m.tasks) > 0:
+		sel := m.taskList.SelectedTask()
+		if sel != nil && sel.Status.IsActive() {
+			msg = fmt.Sprintf("Press [p] to plan — decompose \"%s\" into sub-tasks", sel.Title)
+		} else {
+			msg = "Press [n] to create a new task, [p] to plan"
+		}
+	default:
+		msg = "Press [n] to create a new task"
+	}
+
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#A6ADC8")).
+		Background(lipgloss.Color("#181825")).
+		Padding(0, 1).
+		Width(m.width)
+
+	switch {
+	case m.errorMsg != "":
+		style = style.Foreground(lipgloss.Color("#F38BA8"))
+	case m.activeSubID != "":
+		style = style.Foreground(lipgloss.Color("#F9E2AF"))
+	}
+
+	return style.Render("  " + msg)
+}
+
 
 func (m *Model) renderHelpBar() string {
 	return components.HelpBar(m.width, [][2]string{

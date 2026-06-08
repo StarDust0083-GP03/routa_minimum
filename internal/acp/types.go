@@ -93,7 +93,7 @@ type ACPServerConfig struct {
 // DefaultCommand returns the default ACP command if none is configured.
 func (c *ACPServerConfig) DefaultCommand() string {
 	if c.Command == "" {
-		return "opencode serve"
+		return "opencode acp"
 	}
 	return c.Command
 }
