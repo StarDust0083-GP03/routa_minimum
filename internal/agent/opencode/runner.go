@@ -1,101 +1,215 @@
-// Package opencode implements AgentRunner using the ACP protocol (opencode serve).
+// Package opencode implements AgentRunner using opencode CLI as a subprocess.
+// Uses "opencode run" which outputs JSON lines on stdout.
 package opencode
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
-	"time"
+	"os/exec"
+	"sync"
 
 	"codeg/internal/acp"
 	"codeg/internal/agent"
 )
 
-// Runner implements agent.AgentRunner by communicating with opencode serve via ACP.
+// Runner implements agent.AgentRunner by spawning opencode as a subprocess.
 type Runner struct {
-	client *acp.ACPClient
+	binPath string // path to opencode binary
+	model   string // optional model override
 }
 
-// NewRunner creates a new ACP-based opencode runner.
+// NewRunner creates a new opencode runner.
+// serverURL is kept for interface compatibility but not used in subprocess mode.
 func NewRunner(serverURL string) *Runner {
-	return &Runner{
-		client: acp.NewACPClient(serverURL),
-	}
+	return &Runner{binPath: "opencode"}
 }
 
-// Start creates an ACP session via opencode serve, sends a prompt, and streams SSE events.
+// Start launches "opencode run --dir <cwd> --format json <prompt>".
 func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRole) (*agent.StartResult, error) {
-	sessionID := fmt.Sprintf("codeg-session-%d", time.Now().UnixNano())
+	_ = role // opencode uses its own provider config for model selection
 
-	if role == "" {
-		role = acp.RoleDeveloper
+	args := []string{
+		"run",
+		"--dir", cwd,
+		"--format", "json",
 	}
+	if r.model != "" {
+		args = append(args, "--model", r.model)
+	}
+	args = append(args, prompt)
 
-	// Initialize ACP handshake (idempotent, non-fatal if unsupported)
-	r.client.Initialize(ctx)
+	cmd := exec.CommandContext(ctx, r.binPath, args...)
+	cmd.Dir = cwd
 
-	// Create session
-	sessionResp, err := r.client.CreateSession(ctx, acp.SessionNewParams{
-		SessionID:   sessionID,
-		WorkspaceID: "codeg",
-		Role:        string(role),
-		Cwd:         cwd,
-	})
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("create session: %w", err)
+		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
-
-	// Send initial prompt
-	_, err = r.client.SendPrompt(ctx, acp.SessionPromptParams{
-		SessionID: sessionResp.SessionID,
-		Prompt:    prompt,
-	})
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return nil, fmt.Errorf("send prompt: %w", err)
+		return nil, fmt.Errorf("stderr pipe: %w", err)
 	}
 
-	// Subscribe to SSE events
-	events, err := r.client.SubscribeEvents(ctx, sessionResp.SessionID)
-	if err != nil {
-		return nil, fmt.Errorf("subscribe events: %w", err)
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start opencode: %w", err)
 	}
 
-	cancel := func() error {
-		return r.client.CancelSession(context.Background(), sessionResp.SessionID)
+	ch := make(chan acp.SSEEvent, 64)
+	var once sync.Once
+
+	cancelFunc := func() error {
+		var err error
+		once.Do(func() {
+			if cmd.Process != nil {
+				err = cmd.Process.Kill()
+			}
+		})
+		return err
 	}
+
+	// Read the first JSON line to get the session ID
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var sessionID string
+	if scanner.Scan() {
+		firstLine := scanner.Bytes()
+		var raw map[string]interface{}
+		if err := json.Unmarshal(firstLine, &raw); err == nil {
+			if sid, ok := raw["sessionID"].(string); ok {
+				sessionID = sid
+			}
+		}
+		ch <- parseOpenCodeEvent(raw)
+	}
+
+	// Read stderr in background
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			ch <- acp.SSEEvent{
+				Type: acp.EventProcessOutput,
+				Data: map[string]interface{}{"text": sc.Text()},
+			}
+		}
+	}()
+
+	// Read remaining stdout events in background
+	go func() {
+		defer close(ch)
+		defer cmd.Wait()
+
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			var raw map[string]interface{}
+			if err := json.Unmarshal(line, &raw); err != nil {
+				ch <- acp.SSEEvent{
+					Type: acp.EventMessageChunk,
+					Data: map[string]interface{}{"text": string(line)},
+				}
+				continue
+			}
+
+			event := parseOpenCodeEvent(raw)
+			ch <- event
+
+			if event.Type == acp.EventTurnComplete {
+				return
+			}
+		}
+
+		ch <- acp.SSEEvent{
+			Type: acp.EventTurnComplete,
+			Data: map[string]interface{}{},
+		}
+	}()
 
 	return &agent.StartResult{
-		Events:    events,
-		Cancel:    cancel,
-		SessionID: sessionResp.SessionID,
-	}, nil
-}
-
-// Resume reconnects to an existing session and resumes streaming.
-func (r *Runner) Resume(ctx context.Context, sessionID string) (*agent.StartResult, error) {
-	// Load session to verify it exists
-	_, err := r.client.LoadSession(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("load session: %w", err)
-	}
-
-	// Re-subscribe to SSE events
-	events, err := r.client.Reconnect(ctx, sessionID, 3)
-	if err != nil {
-		return nil, fmt.Errorf("resume events: %w", err)
-	}
-
-	cancel := func() error {
-		return r.client.CancelSession(context.Background(), sessionID)
-	}
-
-	return &agent.StartResult{
-		Events:    events,
-		Cancel:    cancel,
+		Events:    ch,
+		Cancel:    cancelFunc,
 		SessionID: sessionID,
 	}, nil
 }
 
-// Load retrieves session history from the ACP server.
-func (r *Runner) Load(ctx context.Context, sessionID string) (*acp.SessionResponse, error) {
-	return r.client.LoadSession(ctx, sessionID)
+// Resume is not supported in subprocess mode.
+func (r *Runner) Resume(ctx context.Context, sessionID string) (*agent.StartResult, error) {
+	return nil, fmt.Errorf("resume not supported in subprocess mode")
 }
+
+// Load is not supported in subprocess mode.
+func (r *Runner) Load(ctx context.Context, sessionID string) (*acp.SessionResponse, error) {
+	return nil, fmt.Errorf("load not supported in subprocess mode")
+}
+
+// parseOpenCodeEvent converts an opencode JSON event to an ACP SSEEvent.
+func parseOpenCodeEvent(raw map[string]interface{}) acp.SSEEvent {
+	typ, _ := raw["type"].(string)
+	part, _ := raw["part"].(map[string]interface{})
+
+	event := acp.SSEEvent{Type: typ, Data: raw}
+
+	switch typ {
+	case "text":
+		event.Type = acp.EventMessageChunk
+		text := ""
+		if part != nil {
+			if t, ok := part["text"].(string); ok {
+				text = t
+			}
+		}
+		event.Data = map[string]interface{}{"text": text}
+
+	case "tool_call":
+		if part != nil {
+			data := map[string]interface{}{}
+			if name, ok := part["name"].(string); ok {
+				data["name"] = name
+			}
+			if args, ok := part["args"]; ok {
+				data["args"] = args
+			}
+			event.Data = data
+		}
+
+	case "tool_result":
+		event.Type = acp.EventToolUpdate
+		if part != nil {
+			if result, ok := part["result"]; ok {
+				event.Data = map[string]interface{}{"output": fmt.Sprint(result)}
+			} else if text, ok := part["text"].(string); ok {
+				event.Data = map[string]interface{}{"output": text}
+			}
+		}
+
+	case "step_start":
+		event.Type = acp.EventMessageChunk
+		event.Data = map[string]interface{}{"text": "--- agent started ---"}
+
+	case "step_finish":
+		event.Type = acp.EventTurnComplete
+		if part != nil {
+			if tokens, ok := part["tokens"].(map[string]interface{}); ok {
+				event.Data = map[string]interface{}{"tokens": tokens}
+			}
+		}
+
+	case "error":
+		msg := ""
+		if part != nil {
+			if m, ok := part["text"].(string); ok {
+				msg = m
+			}
+		}
+		if msg == "" {
+			if m, ok := raw["message"].(string); ok {
+				msg = m
+			}
+		}
+		event.Data = map[string]interface{}{"message": msg}
+	}
+
+	return event
+}
+

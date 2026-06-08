@@ -10,8 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"codeg/internal/acp"
-	"codeg/internal/agent"
 	"codeg/internal/agent/core"
 	opencodeagent "codeg/internal/agent/opencode"
 	"codeg/internal/config"
@@ -96,43 +94,12 @@ func main() {
 	subTaskMgr := task.NewSubTaskManager(subTaskStore)
 	taskMgr.SetSubTaskManager(subTaskMgr)
 
-	// Initialize ACP agent runner.
-	// If ACP server URL is configured, connect to an existing server;
-	// otherwise, manage our own opencode serve process.
-	var agentRunner agent.AgentRunner
-	var acpMgr *agent.AcpManager
-
-	if cfg.ACPServerURL != "" {
-		// Connect to an external ACP server
-		agentRunner = opencodeagent.NewRunner(cfg.ACPServerURL)
-	} else {
-		// Start and manage our own ACP server process
-		acpMgr = agent.NewAcpManager(acp.ACPServerConfig{
-			Command:  cfg.ACP.Command,
-			PortFlag: cfg.ACP.PortFlag,
-			Port:     cfg.ACP.Port,
-			Provider: cfg.ACP.Provider,
-			Model:    cfg.ACP.Model,
-		})
-
-		if err := acpMgr.StartServer(ctx); err != nil {
-			log.Fatalf("Failed to start ACP server: %v", err)
-		}
-		defer acpMgr.StopServer()
-
-		agentRunner = opencodeagent.NewRunner(acpMgr.ServerURL())
-	}
-
-	// Initialize agent controller
+	// Initialize opencode agent runner (uses "opencode run" subprocess)
+	agentRunner := opencodeagent.NewRunner("")
 	agentCtrl := core.NewAgentController(agentRunner)
 
 	// Create and run the TUI
 	model := tui.NewModel(taskMgr, agentCtrl, taskStore)
-
-	// Wire AcpManager into the model if available
-	if acpMgr != nil {
-		model.SetAcpManager(acpMgr)
-	}
 
 	program := tea.NewProgram(
 		model,

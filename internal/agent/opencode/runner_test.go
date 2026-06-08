@@ -2,192 +2,99 @@ package opencode
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"os/exec"
 	"testing"
 
 	"codeg/internal/acp"
 )
 
-func setupMockACPServer(t *testing.T) (*httptest.Server, *Runner) {
-	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		// Handle SSE subscription
-		if r.Method == http.MethodGet && strings.Contains(r.URL.RawQuery, "sessionId") {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(http.StatusOK)
-			flusher, ok := w.(http.Flusher)
-			if !ok {
-				return
-			}
-			// Send one event then close
-			w.Write([]byte("event: agent_message_chunk\ndata: {\"text\":\"Hello from agent\"}\n\n"))
-			flusher.Flush()
-			w.Write([]byte("event: turn_complete\ndata: {}\n\n"))
-			flusher.Flush()
-			return
-		}
-
-		// Handle JSON-RPC
-		if r.Method == http.MethodPost {
-			var req acp.JSONRPCRequest
-			json.NewDecoder(r.Body).Decode(&req)
-
-			var result json.RawMessage
-			switch req.Method {
-			case "initialize":
-				result, _ = json.Marshal(map[string]interface{}{
-					"protocolVersion": 1,
-					"serverName":      "test-opencode",
-				})
-			case "session/new":
-				params := req.Params.(map[string]interface{})
-				sid := params["sessionId"].(string)
-				result, _ = json.Marshal(acp.SessionResponse{
-					SessionID: sid,
-					Status:    "active",
-				})
-			case "session/prompt":
-				params := req.Params.(map[string]interface{})
-				sid := params["sessionId"].(string)
-				result, _ = json.Marshal(acp.PromptResponse{
-					SessionID: sid,
-					TurnID:    "turn-1",
-					Status:    "streaming",
-				})
-			case "session/cancel":
-				result = json.RawMessage(`{"ok":true}`)
-			case "session/load":
-				result, _ = json.Marshal(acp.SessionResponse{
-					SessionID: req.Params.(map[string]interface{})["sessionId"].(string),
-					Status:    "active",
-				})
-			default:
-				result = json.RawMessage(`{"ok":true}`)
-			}
-
-			resp := acp.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Result:  result,
-			}
-			json.NewEncoder(w).Encode(resp)
-		}
-	}))
-
-	runner := NewRunner(server.URL)
-	return server, runner
+func opencodeAvailable() bool {
+	_, err := exec.LookPath("opencode")
+	return err == nil
 }
 
 func TestNewRunner(t *testing.T) {
-	runner := NewRunner("http://localhost:4200/api/acp")
+	runner := NewRunner("")
 	if runner == nil {
 		t.Fatal("expected non-nil runner")
 	}
-	if runner.client == nil {
-		t.Error("expected non-nil client")
+	if runner.binPath != "opencode" {
+		t.Errorf("expected binPath 'opencode', got %q", runner.binPath)
 	}
 }
 
-func TestStart(t *testing.T) {
-	server, runner := setupMockACPServer(t)
-	defer server.Close()
+func TestParseOpenCodeEvent_Text(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "text",
+		"part": map[string]interface{}{"text": "Hello world"},
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventMessageChunk {
+		t.Errorf("expected EventMessageChunk, got %q", evt.Type)
+	}
+	if evt.Data["text"] != "Hello world" {
+		t.Errorf("expected 'Hello world', got %v", evt.Data["text"])
+	}
+}
 
-	result, err := runner.Start(context.Background(), "/project/test", "Write a function", acp.RoleDeveloper)
+func TestParseOpenCodeEvent_ToolCall(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "tool_call",
+		"part": map[string]interface{}{
+			"name": "read",
+			"args": map[string]interface{}{"path": "/test"},
+		},
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventToolCall {
+		t.Errorf("expected EventToolCall, got %q", evt.Type)
+	}
+}
+
+func TestParseOpenCodeEvent_ToolResult(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "tool_result",
+		"part": map[string]interface{}{"result": "file contents"},
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventToolUpdate {
+		t.Errorf("expected EventToolUpdate, got %q", evt.Type)
+	}
+}
+
+func TestParseOpenCodeEvent_StepFinish(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "step_finish",
+		"part": map[string]interface{}{
+			"tokens": map[string]interface{}{"input": 100.0, "output": 50.0},
+		},
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventTurnComplete {
+		t.Errorf("expected EventTurnComplete, got %q", evt.Type)
+	}
+}
+
+func TestParseOpenCodeEvent_Error(t *testing.T) {
+	raw := map[string]interface{}{
+		"type":    "error",
+		"message": "something went wrong",
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Data["message"] != "something went wrong" {
+		t.Errorf("expected 'something went wrong', got %v", evt.Data["message"])
+	}
+}
+
+// Integration test — requires opencode installed
+func TestStart_Integration(t *testing.T) {
+	if !opencodeAvailable() {
+		t.Skip("opencode not found in PATH")
+	}
+
+	runner := NewRunner("")
+	_, err := runner.Start(context.Background(), "/tmp", "say hello", acp.RoleDeveloper)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
-	}
-
-	if result.SessionID == "" {
-		t.Error("expected non-empty session ID")
-	}
-
-	// Read events from the channel
-	var events []acp.SSEEvent
-	for evt := range result.Events {
-		events = append(events, evt)
-		if evt.Type == acp.EventTurnComplete {
-			break
-		}
-	}
-
-	if len(events) < 1 {
-		t.Error("expected at least 1 event")
-	}
-}
-
-func TestResume(t *testing.T) {
-	server, runner := setupMockACPServer(t)
-	defer server.Close()
-
-	result, err := runner.Resume(context.Background(), "existing-session-id")
-	if err != nil {
-		t.Fatalf("Resume failed: %v", err)
-	}
-	if result.SessionID != "existing-session-id" {
-		t.Errorf("expected session ID 'existing-session-id', got %q", result.SessionID)
-	}
-}
-
-func TestLoad(t *testing.T) {
-	server, runner := setupMockACPServer(t)
-	defer server.Close()
-
-	session, err := runner.Load(context.Background(), "load-session-id")
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if session.SessionID != "load-session-id" {
-		t.Errorf("expected session ID 'load-session-id', got %q", session.SessionID)
-	}
-}
-
-func TestStart_Cancel(t *testing.T) {
-	server, runner := setupMockACPServer(t)
-	defer server.Close()
-
-	result, err := runner.Start(context.Background(), "/project", "test prompt", acp.RoleDeveloper)
-	if err != nil {
-		t.Fatalf("Start failed: %v", err)
-	}
-
-	// Cancel should succeed
-	err = result.Cancel()
-	if err != nil {
-		t.Errorf("Cancel failed: %v", err)
-	}
-}
-
-func TestStart_StreamsEvents(t *testing.T) {
-	server, runner := setupMockACPServer(t)
-	defer server.Close()
-
-	result, err := runner.Start(context.Background(), "/project", "prompt", acp.RoleDeveloper)
-	if err != nil {
-		t.Fatalf("Start failed: %v", err)
-	}
-
-	foundChunk := false
-	foundComplete := false
-	for evt := range result.Events {
-		if evt.Type == acp.EventMessageChunk {
-			foundChunk = true
-		}
-		if evt.Type == acp.EventTurnComplete {
-			foundComplete = true
-			break
-		}
-	}
-
-	if !foundChunk {
-		t.Error("expected agent_message_chunk event")
-	}
-	if !foundComplete {
-		t.Error("expected turn_complete event")
 	}
 }
