@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -28,6 +29,8 @@ type OpenAIConfig struct {
 }
 
 // NewOpenAIClient creates a new OpenAI API client.
+// BaseURL should be the API root (e.g. "https://api.deepseek.com" or "https://api.openai.com").
+// Trailing "/v1" is automatically stripped to avoid double-prefixing.
 func NewOpenAIClient(cfg OpenAIConfig) *OpenAIClient {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api.openai.com"
@@ -38,9 +41,12 @@ func NewOpenAIClient(cfg OpenAIConfig) *OpenAIClient {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 30 * time.Second
 	}
+	// Strip trailing /v1 to avoid double /v1/v1 in URL construction
+	baseURL := strings.TrimSuffix(cfg.BaseURL, "/v1")
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &OpenAIClient{
 		apiKey:  cfg.APIKey,
-		baseURL: cfg.BaseURL,
+		baseURL: baseURL,
 		model:   cfg.Model,
 		client:  &http.Client{Timeout: cfg.Timeout},
 	}

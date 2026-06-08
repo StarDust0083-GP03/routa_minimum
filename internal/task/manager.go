@@ -13,17 +13,29 @@ import (
 
 // TaskManager provides high-level task lifecycle operations.
 type TaskManager struct {
-	store   TaskStore
-	llm     llm.Client
-	mu      sync.RWMutex
+	store      TaskStore
+	subManager *SubTaskManager
+	llm        llm.Client
+	mu         sync.RWMutex
 }
 
 // NewTaskManager creates a new task manager.
 func NewTaskManager(store TaskStore, llmClient llm.Client) *TaskManager {
 	return &TaskManager{
-		store: store,
-		llm:   llmClient,
+		store:      store,
+		llm:        llmClient,
+		subManager: nil, // set via SetSubTaskManager
 	}
+}
+
+// SetSubTaskManager wires the sub-task manager for decomposition workflows.
+func (m *TaskManager) SetSubTaskManager(sm *SubTaskManager) {
+	m.subManager = sm
+}
+
+// SubTasks returns the sub-task manager, or nil.
+func (m *TaskManager) SubTasks() *SubTaskManager {
+	return m.subManager
 }
 
 // Create creates a new task with the given title and objective.
@@ -206,7 +218,23 @@ func (m *TaskManager) GenerateSummary(ctx context.Context, taskID string) (strin
 	}
 	sb.WriteString(fmt.Sprintf("Sessions: %d\n", len(task.SessionIDs)))
 
+	// Include sub-task info if available
+	if m.subManager != nil {
+		subTasks, err := m.subManager.ListByTask(taskID)
+		if err == nil && len(subTasks) > 0 {
+			sb.WriteString(fmt.Sprintf("\nSub-tasks: %d\n", len(subTasks)))
+			for _, st := range subTasks {
+				sb.WriteString(fmt.Sprintf("  [%s] %s (%s)\n", st.Status, st.Title, st.Directory))
+			}
+		}
+	}
+
 	return m.llm.Summarize(ctx, task.Objective, sb.String())
+}
+
+// GetLLMClient returns the LLM client for planning and summarization.
+func (m *TaskManager) GetLLMClient() llm.Client {
+	return m.llm
 }
 
 // Store returns the underlying task store for direct access.

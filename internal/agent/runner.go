@@ -18,4 +18,10 @@ type StartResult struct {
 type AgentRunner interface {
 	// Start launches a coding agent in the given directory with a prompt.
 	Start(ctx context.Context, cwd, prompt string) (*StartResult, error)
+
+	// Resume reconnects to an existing session and continues streaming.
+	Resume(ctx context.Context, sessionID string) (*StartResult, error)
+
+	// Load retrieves the history of a past session.
+	Load(ctx context.Context, sessionID string) (*acp.SessionResponse, error)
 }

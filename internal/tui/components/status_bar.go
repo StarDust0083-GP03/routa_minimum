@@ -22,9 +22,15 @@ var (
 )
 
 // StatusBar renders the top status bar.
-func StatusBar(width int, taskCount, runningCount int, mode, errorMsg string) string {
-	left := fmt.Sprintf("codeg | %d tasks | %d running | %s",
-		taskCount, runningCount, mode)
+func StatusBar(width int, taskCount, subTaskCount, runningCount int, mode, errorMsg string) string {
+	var left string
+	if subTaskCount > 0 {
+		left = fmt.Sprintf("codeg | %d tasks · %d subtasks · %d running | %s",
+			taskCount, subTaskCount, runningCount, mode)
+	} else {
+		left = fmt.Sprintf("codeg | %d tasks | %d running | %s",
+			taskCount, runningCount, mode)
+	}
 
 	right := "q: quit"
 

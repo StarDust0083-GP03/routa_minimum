@@ -14,13 +14,27 @@ type Config struct {
 	DBPath string `json:"dbPath"`
 
 	// ACPServerURL is the URL of the ACP server for coding agents.
+	// When empty, codeg manages its own opencode serve process.
 	ACPServerURL string `json:"acpServerUrl"`
+
+	// ACP holds configuration for the managed ACP server.
+	ACP ACPConfig `json:"acp"`
 
 	// OpenAI holds OpenAI API configuration.
 	OpenAI OpenAIConfig `json:"openai"`
 
+	// Planning holds configuration for the LLM-based task planner.
+	Planning PlanningConfig `json:"planning"`
+
 	// DefaultWorkspace is the default workspace directory.
 	DefaultWorkspace string `json:"defaultWorkspace,omitempty"`
+}
+
+// ACPConfig holds configuration for the managed ACP server process.
+type ACPConfig struct {
+	Port     int    `json:"port"`     // 0 = random port
+	Provider string `json:"provider"` // e.g. "anthropic", "openai"
+	Model    string `json:"model"`    // model override
 }
 
 // OpenAIConfig holds OpenAI API configuration.
@@ -30,14 +44,23 @@ type OpenAIConfig struct {
 	Model   string `json:"model,omitempty"`
 }
 
+// PlanningConfig holds configuration for LLM-based task decomposition.
+type PlanningConfig struct {
+	Model   string `json:"model"`   // model for planning (defaults to OpenAI model)
+	Enabled bool   `json:"enabled"` // enable/disable LLM planning
+}
+
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		DBPath:       filepath.Join(home, ".codeg", "codeg.db"),
-		ACPServerURL: "http://localhost:3000/api/acp",
+		ACPServerURL: "", // empty = manage own opencode serve process
 		OpenAI: OpenAIConfig{
 			Model: "gpt-4o-mini",
+		},
+		Planning: PlanningConfig{
+			Enabled: true,
 		},
 	}
 }
@@ -80,6 +103,18 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("CODEG_WORKSPACE"); v != "" {
 		cfg.DefaultWorkspace = v
+	}
+	if v := os.Getenv("CODEG_ACP_PORT"); v != "" {
+		fmt.Sscanf(v, "%d", &cfg.ACP.Port)
+	}
+	if v := os.Getenv("CODEG_ACP_PROVIDER"); v != "" {
+		cfg.ACP.Provider = v
+	}
+	if v := os.Getenv("CODEG_PLANNING_MODEL"); v != "" {
+		cfg.Planning.Model = v
+	}
+	if v := os.Getenv("CODEG_PLANNING_ENABLED"); v != "" {
+		cfg.Planning.Enabled = v == "true" || v == "1"
 	}
 
 	return cfg, nil

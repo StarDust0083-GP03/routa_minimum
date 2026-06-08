@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codeg v2 — Sub-Tasks &amp; ACP Rearchitecture Plan</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg:       #1e1e2e;
+    --surface:  #313244;
+    --overlay:  #45475a;
+    --ink:      #cdd6f4;
+    --ink-soft: #a6adc8;
+    --muted:    #585b70;
+    --blue:     #89b4fa;
+    --green:    #a6e3a1;
+    --yellow:   #f9e2af;
+    --red:      #f38ba8;
+    --mauve:    #cba6f7;
+    --teal:     #94e2d5;
+    --peach:    #fab387;
+    --pink:     #f5c2e7;
+    --cyan:     #89dceb;
+    --white:    #ffffff;
+    --sans:  Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono:  ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); color: var(--ink); scroll-behavior: smooth; }
+  body { font: 16px/1.55 var(--sans); max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.1; color: var(--white); margin-bottom: .2rem; }
+  .subtitle { font-size: 1.1rem; color: var(--ink-soft); margin-bottom: 2rem; }
+  h2 { font-size: 1.3rem; font-weight: 600; color: var(--blue); margin: 2.5rem 0 .75rem; padding-bottom: .35rem; border-bottom: 2px solid var(--overlay); }
+  h3 { font-size: 1.05rem; font-weight: 600; color: var(--mauve); margin: 1.5rem 0 .5rem; }
+  h4 { font-size: .95rem; font-weight: 600; color: var(--teal); margin: 1.2rem 0 .4rem; }
+  p, li { color: var(--ink); margin: .4rem 0; }
+  ul, ol { padding-left: 1.5rem; margin: .4rem 0; }
+  li { margin: .2rem 0; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--surface); padding: .1em .35em; border-radius: 3px; color: var(--peach); }
+  pre { font-family: var(--mono); font-size: .82rem; background: var(--surface); border: 1px solid var(--overlay); padding: 1rem 1.2rem; border-radius: var(--radius); overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--ink); }
+
+  /* --- Problem cards --- */
+  .problem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin: 1rem 0; }
+  .problem { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; border-top: 3px solid var(--red); }
+  .problem.fix { border-top-color: var(--green); }
+  .problem h3 { margin: 0 0 .5rem; font-size: 1rem; color: var(--white); }
+  .problem .tag { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  .tag.broken { background: var(--red); color: var(--bg); }
+  .tag.fixed { background: var(--green); color: var(--bg); }
+
+  /* --- Phase timeline --- */
+  .phase-track { display: flex; gap: 0; margin: 1rem 0; overflow-x: auto; }
+  .phase { flex: 1; min-width: 140px; background: var(--surface); padding: 1rem; text-align: center; position: relative; }
+  .phase:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .phase:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+  .phase .num { font-size: 1.8rem; font-weight: 800; color: var(--blue); }
+  .phase .name { font-size: .8rem; font-weight: 600; color: var(--white); margin: .3rem 0; }
+  .phase .desc { font-size: .75rem; color: var(--ink-soft); }
+  .phase::after { content: "→"; position: absolute; right: -8px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 1.2rem; z-index: 1; }
+  .phase:last-child::after { content: ""; }
+
+  /* --- Tables --- */
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0; font-size: .85rem; }
+  th { font-weight: 600; color: var(--blue); text-align: left; padding: .5rem .7rem; border-bottom: 2px solid var(--overlay); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+  td { padding: .4rem .7rem; border-bottom: 1px solid var(--overlay); color: var(--ink-soft); }
+  tr:hover td { background: var(--surface); }
+  td:first-child { color: var(--ink); font-family: var(--mono); font-size: .8rem; }
+
+  /* --- TUI mockup --- */
+  .tui { background: var(--bg); border: 2px solid var(--overlay); border-radius: var(--radius); overflow: hidden; margin: 1rem 0; font-family: var(--mono); font-size: .75rem; line-height: 1.6; }
+  .tui-bar { background: var(--blue); color: var(--bg); padding: .2rem .8rem; font-weight: 700; display: flex; justify-content: space-between; }
+  .tui-help { background: var(--surface); color: var(--muted); padding: .15rem .8rem; border-top: 1px solid var(--overlay); }
+  .tui-help b { color: var(--blue); }
+  .tui-main { display: flex; }
+  .tui-col { padding: .4rem .7rem; }
+  .tui-col.left { width: 35%; border-right: 2px solid var(--overlay); }
+  .tui-col.right { width: 65%; }
+  .tui-title { color: var(--blue); font-weight: 700; }
+  .tui-row { padding: .1rem 0; }
+  .tui-row.sel { background: var(--overlay); margin: 0 -.4rem; padding: .1rem .4rem; }
+  .c-y { color: var(--yellow); }
+  .c-g { color: var(--green); }
+  .c-r { color: var(--red); }
+  .c-m { color: var(--muted); }
+  .c-b { color: var(--blue); }
+  .c-p { color: var(--mauve); }
+  .c-w { color: var(--white); }
+  .indent { padding-left: 1.2rem; }
+
+  /* --- Diagram wrap --- */
+  .diagram { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; margin: .75rem 0; overflow-x: auto; }
+  .diagram .mermaid { display: flex; justify-content: center; }
+
+  /* --- File change legend --- */
+  .change-new { color: var(--green); }
+  .change-mod { color: var(--yellow); }
+  .change-del { color: var(--red); }
+
+  @media (max-width: 700px) {
+    body { padding: 1rem .75rem; }
+    h1 { font-size: 1.5rem; }
+    .problem-grid { grid-template-columns: 1fr; }
+    .phase-track { flex-wrap: wrap; }
+    .phase { min-width: 120px; }
+    .tui-main { flex-direction: column; }
+    .tui-col.left, .tui-col.right { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<h1>codeg v2 — Implementation Plan</h1>
+<p class="subtitle">Sub-Task Architecture · ACP Protocol Rework · Two-Phase Agent Workflow</p>
+
+<div class="problem-grid">
+  <div class="problem">
+    <span class="tag broken">Problem 1</span>
+    <h3>ACP Integration Uses Wrong Transport</h3>
+    <p>Currently spawns <code>opencode run</code> as a one-shot subprocess. This is a fire-and-forget pattern — no session management, no resume, no multi-turn interaction.</p>
+    <p style="margin-top:.5rem;"><strong>Must use</strong>: <code>opencode serve</code> as a persistent ACP server, communicating via JSON-RPC 2.0 + SSE — the actual ACP protocol.</p>
+  </div>
+  <div class="problem fix">
+    <span class="tag fixed">Fix</span>
+    <h3>Full ACP Lifecycle via JSON-RPC + SSE</h3>
+    <ul>
+      <li><code>POST /api/acp</code> — initialize, session/new, session/prompt, session/cancel</li>
+      <li><code>GET /api/acp?sessionId=xxx</code> — SSE streaming updates</li>
+      <li>Session persistence, resume, cancel</li>
+      <li>Proper session/update event handling</li>
+    </ul>
+  </div>
+</div>
+
+<div class="problem-grid">
+  <div class="problem">
+    <span class="tag broken">Problem 2</span>
+    <h3>Flat Task Model — No Decomposition</h3>
+    <p>Tasks are monolithic: one directory, one agent. No way to split work across directories or coordinate multiple agents.</p>
+    <p style="margin-top:.5rem;"><strong>Missing</strong>: sub-tasks, planning workflow, per-directory agents, verification phase.</p>
+  </div>
+  <div class="problem fix">
+    <span class="tag fixed">Fix</span>
+    <h3>Task → SubTask → Two-Phase Agent Execution</h3>
+    <ul>
+      <li>Each Task has N SubTasks, each in its own directory</li>
+      <li>Plan mode: LLM-assisted decomposition with user confirmation</li>
+      <li>Two phases per SubTask: Coding (DEVELOPER) + Verification (GATE)</li>
+      <li>Each phase = one ACP session from the sub-task's directory</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── Architecture ── -->
+<h2>1. Target Architecture</h2>
+<div class="diagram"><pre class="mermaid">
+graph TB
+    subgraph UI["TUI Layer"]
+        APP["app.go<br/>Bubble Tea Model"]
+        PLAN["components/plan_mode.go<br/>Task Decomposition"]
+        SUBLIST["components/subtask_list.go<br/>SubTask Tree"]
+        SUBDETAIL["components/subtask_detail.go<br/>Phase Progress"]
+        AGENTOUT["components/agent_panel.go<br/>Per-SubTask Output"]
+    end
+
+    subgraph Domain["Domain Layer"]
+        TM["task/manager.go<br/>TaskManager"]
+        STM["task/subtask_manager.go<br/>SubTaskManager"]
+        STSTORE["task/subtask_store.go<br/>SubTask SQLite"]
+        PLANLLM["task/planner.go<br/>LLM Decomposition"]
+        LLM["llm/openai.go<br/>OpenAI Client"]
+    end
+
+    subgraph Agent["Agent Layer"]
+        ACMGR["agent/acp_manager.go<br/>AcpManager"]
+        ACSESS["agent/acp_session.go<br/>AcpSession"]
+        ACPCLI["acp/client.go<br/>ACPClient<br/>JSON-RPC + SSE"]
+    end
+
+    subgraph External["External"]
+        OPSERVE["opencode serve<br/>ACP Server :4200"]
+        OAI["OpenAI API<br/>summaries + planning"]
+        DB_FILE["SQLite<br/>~/.codeg/codeg.db"]
+    end
+
+    APP --> PLAN & SUBLIST & SUBDETAIL & AGENTOUT
+    APP --> TM & STM
+    TM --> STM
+    STM --> STSTORE & PLANLLM
+    PLANLLM --> LLM --> OAI
+    STSTORE --> DB_FILE
+    STM --> ACMGR
+    ACMGR --> ACSESS
+    ACSESS --> ACPCLI
+    ACPCLI -->|"POST /api/acp"| OPSERVE
+    ACPCLI -->|"GET /api/acp?sessionId=x (SSE)"| OPSERVE
+
+    style UI fill:#313244,stroke:#cba6f7,color:#cdd6f4
+    style Domain fill:#313244,stroke:#a6e3a1,color:#cdd6f4
+    style Agent fill:#313244,stroke:#f9e2af,color:#cdd6f4
+    style External fill:#1e1e2e,stroke:#585b70,color:#a6adc8
+</pre></div>
+
+<!-- ── Data Model ── -->
+<h2>2. Data Model Changes</h2>
+<div class="diagram"><pre class="mermaid">
+erDiagram
+    tasks {
+        string id PK
+        string title
+        string objective
+        string status
+        string priority
+        string summary
+        datetime created_at
+        datetime updated_at
+        datetime completed_at
+    }
+    subtasks {
+        string id PK
+        string task_id FK
+        string title
+        string description
+        string directory
+        string status
+        int order_index
+        string coding_session_id
+        string verification_session_id
+        datetime coding_started_at
+        datetime coding_completed_at
+        datetime verification_started_at
+        datetime verification_completed_at
+        datetime created_at
+        datetime updated_at
+    }
+    task_directories {
+        string task_id FK
+        string path
+        string label
+    }
+    task_sessions {
+        string task_id FK
+        string session_id
+        string subtask_id
+        string phase
+    }
+    sessions {
+        string id PK
+        string cwd
+        string name
+    }
+    entries {
+        string id PK
+        string session_id FK
+        string type
+        text data
+    }
+    tasks ||--o{ subtasks : "has many"
+    tasks ||--o{ task_directories : "bound dirs"
+    tasks ||--o{ task_sessions : "session links"
+    task_sessions }o--|| sessions : "references"
+    sessions ||--o{ entries : "entries"
+    subtasks ||--o{ task_sessions : "subtask sessions"
+</pre></div>
+
+<h3>SubTask Model</h3>
+<pre><code>type SubTaskStatus string
+const (
+    SubTaskPlanned    SubTaskStatus = "planned"
+    SubTaskCoding     SubTaskStatus = "coding"
+    SubTaskVerifying  SubTaskStatus = "verifying"
+    SubTaskDone       SubTaskStatus = "done"
+    SubTaskFailed     SubTaskStatus = "failed"
+)
+
+type SubTask struct {
+    ID                   string        `json:"id"`
+    TaskID               string        `json:"taskId"`
+    Title                string        `json:"title"`
+    Description          string        `json:"description"`
+    Directory            string        `json:"directory"`
+    Status               SubTaskStatus `json:"status"`
+    OrderIndex           int           `json:"orderIndex"`
+    CodingSessionID      string        `json:"codingSessionId,omitempty"`
+    VerificationSessionID string       `json:"verificationSessionId,omitempty"`
+    CodingStartedAt      *time.Time    `json:"codingStartedAt,omitempty"`
+    CodingCompletedAt    *time.Time    `json:"codingCompletedAt,omitempty"`
+    VerificationStartedAt *time.Time   `json:"verificationStartedAt,omitempty"`
+    VerificationCompletedAt *time.Time `json:"verificationCompletedAt,omitempty"`
+    CreatedAt             time.Time    `json:"createdAt"`
+    UpdatedAt             time.Time    `json:"updatedAt"`
+}</code></pre>
+
+<!-- ── ACP Lifecycle ── -->
+<h2>3. ACP Session Lifecycle</h2>
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+    participant C as codeg TUI
+    participant M as AcpManager
+    participant S as opencode serve
+    participant A as Agent Process
+
+    Note over C,A: Phase 1 — Coding (role: DEVELOPER)
+
+    C->>M: StartSubTask(subTask, phase="coding")
+    M->>S: POST /api/acp {"method":"initialize"}
+    S-->>M: {"protocolVersion":1}
+    M->>S: POST /api/acp {"method":"session/new","params":{"cwd":"/project/backend",...}}
+    S->>A: Spawn agent in /project/backend
+    S-->>M: {"sessionId":"ses_abc123"}
+    M->>M: Store codingSessionID on SubTask
+    M->>S: POST /api/acp {"method":"session/prompt","params":{"prompt":"Implement auth..."}}
+    S-->>A: Forward prompt
+    M->>S: GET /api/acp?sessionId=ses_abc123 (SSE)
+    loop Streaming
+        S-->>M: event: agent_message_chunk
+        M-->>C: AgentEventMsg → agentPanel
+        S-->>M: event: tool_call
+        S-->>M: event: tool_call_update
+    end
+    S-->>M: event: turn_complete
+    M->>C: Phase complete
+
+    Note over C,A: Phase 2 — Verification (role: GATE)
+
+    C->>M: TransitionPhase(subTask, phase="verifying")
+    M->>S: POST /api/acp {"method":"session/new","params":{"cwd":"/project/backend","role":"GATE"}}
+    S->>A: Spawn verification agent
+    S-->>M: {"sessionId":"ses_def456"}
+    M->>M: Store verificationSessionID on SubTask
+    M->>S: POST /api/acp {"method":"session/prompt","params":{"prompt":"Verify the auth implementation..."}}
+    M->>S: GET /api/acp?sessionId=ses_def456 (SSE)
+    loop Verification
+        S-->>M: event: agent_message_chunk
+        M-->>C: Verification messages → agentPanel
+    end
+    S-->>M: event: turn_complete
+    M->>C: SubTask done
+</pre></div>
+
+<!-- ── TUI Layout Mockups ── -->
+<h2>4. TUI Layout Changes</h2>
+
+<h3>4.1 Plan Mode — Task Decomposition</h3>
+<div class="tui">
+  <div class="tui-bar"><span>codeg | plan mode | Task: Build auth system</span><span>Enter: confirm  Esc: cancel</span></div>
+  <div style="padding:.5rem .8rem;">
+    <div class="c-w" style="margin-bottom:.3rem;"><span class="c-p">Task:</span> Build authentication system with JWT</div>
+    <div class="c-m" style="margin-bottom:.5rem;">LLM suggests the following sub-tasks. Edit or confirm.</div>
+
+    <div style="background:var(--surface); padding:.4rem .6rem; margin:.3rem 0; border-radius:4px; border-left:3px solid var(--blue);">
+      <span class="c-b">1.</span> <span class="c-w">Backend auth middleware</span> <span class="c-m" style="float:right;">/project/backend</span>
+      <div class="c-m" style="font-size:.7rem;">Implement JWT token generation, validation middleware, and refresh token logic</div>
+    </div>
+    <div style="background:var(--surface); padding:.4rem .6rem; margin:.3rem 0; border-radius:4px; border-left:3px solid var(--blue);">
+      <span class="c-b">2.</span> <span class="c-w">Frontend login page</span> <span class="c-m" style="float:right;">/project/frontend</span>
+      <div class="c-m" style="font-size:.7rem;">Create login form, token storage, axios interceptor for auth headers</div>
+    </div>
+    <div style="background:var(--surface); padding:.4rem .6rem; margin:.3rem 0; border-radius:4px; border-left:3px solid var(--blue);">
+      <span class="c-b">3.</span> <span class="c-w">E2E auth tests</span> <span class="c-m" style="float:right;">/project/e2e</span>
+      <div class="c-m" style="font-size:.7rem;">Write Playwright tests for login flow, token refresh, and 401 handling</div>
+    </div>
+  </div>
+  <div class="tui-help"><b>Enter</b> confirm plan <b>e</b> edit subtask <b>+</b> add <b>-</b> remove <b>Esc</b> cancel</div>
+</div>
+
+<h3>4.2 Monitoring — SubTask Progress</h3>
+<div class="tui">
+  <div class="tui-bar"><span>codeg | 1 task · 3 subtasks · 1 running | monitor</span><span>q: quit</span></div>
+  <div class="tui-main">
+    <div class="tui-col left">
+      <div class="tui-title">Task: Build auth system</div>
+      <div class="tui-row c-m">━━ SubTasks ━━</div>
+      <div class="tui-row sel">
+        <span class="c-y">◉</span> <span class="c-w">Backend auth middleware</span>
+        <div class="indent c-m">/project/backend</div>
+        <div class="indent"><span class="c-g">✓ coding</span> <span class="c-y">◷ verifying</span></div>
+      </div>
+      <div class="tui-row">
+        <span class="c-m">○</span> <span class="c-w">Frontend login page</span>
+        <div class="indent c-m">/project/frontend</div>
+        <div class="indent c-m">planned</div>
+      </div>
+      <div class="tui-row">
+        <span class="c-m">○</span> <span class="c-w">E2E auth tests</span>
+        <div class="indent c-m">/project/e2e</div>
+        <div class="indent c-m">planned</div>
+      </div>
+    </div>
+    <div class="tui-col right">
+      <div class="tui-title">SubTask Detail</div>
+      <div class="tui-row"><span class="c-b">Title:</span> Backend auth middleware</div>
+      <div class="tui-row"><span class="c-b">Dir:</span> <span class="c-g">/project/backend</span></div>
+      <div class="tui-row"><span class="c-b">Status:</span> <span class="c-y">verifying</span></div>
+      <div style="margin:.4rem 0;">
+        <span class="c-g">● Coding</span> <span class="c-m">──────</span> <span class="c-y">● Verifying</span> <span class="c-m">────</span> <span class="c-m">○ Done</span>
+      </div>
+      <div class="c-m">Coding session: ses_abc123 (completed)</div>
+      <div class="c-m">Verification: ses_def456 (running…)</div>
+    </div>
+  </div>
+  <div style="border-top:2px solid var(--overlay); padding:.4rem .8rem;">
+    <div class="c-g" style="font-weight:700;">Agent Output (verification phase)</div>
+    <div class="c-m">--- agent started ---</div>
+    <div class="c-m">Checking JWT token validation in middleware/auth.go…</div>
+    <div class="c-b">[tool] read</div>
+    <div class="c-m">  Found refresh token implementation in auth/tokens.go</div>
+    <div class="c-g">✓ All tests pass. Implementation verified.</div>
+  </div>
+  <div class="tui-help"><b>↑/↓</b> select <b>r</b> run next <b>c</b> cancel <b>f</b> force-verify <b>1/2/3</b> focus <b>q</b> quit</div>
+</div>
+
+<!-- ── Implementation Phases ── -->
+<h2>5. Implementation Phases</h2>
+
+<div class="phase-track">
+  <div class="phase"><div class="num">1</div><div class="name">ACP Rework</div><div class="desc">JSON-RPC + SSE client, session lifecycle, opencode serve integration</div></div>
+  <div class="phase"><div class="num">2</div><div class="name">SubTask Model</div><div class="desc">Data model, SQLite schema, CRUD, phase state machine</div></div>
+  <div class="phase"><div class="num">3</div><div class="name">Plan Mode</div><div class="desc">LLM decomposition, user editing, sub-task creation</div></div>
+  <div class="phase"><div class="num">4</div><div class="name">Two‑Phase Agent</div><div class="desc">Coding → Verification workflow, per-phase ACP sessions</div></div>
+  <div class="phase"><div class="num">5</div><div class="name">TUI Dashboard</div><div class="desc">Sub-task tree, phase progress, per‑subtask output panels</div></div>
+  <div class="phase"><div class="num">6</div><div class="name">Polish</div><div class="desc">Orchestration, error handling, build &amp; test</div></div>
+</div>
+
+<h3>Phase 1: ACP Protocol Rework</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-mod">internal/acp/client.go</td><td>Rewrite</td><td>Full JSON-RPC 2.0 client: initialize, session/new, session/prompt, session/cancel. SSE subscription with reconnection.</td></tr>
+    <tr><td class="change-mod">internal/acp/types.go</td><td>Extend</td><td>Session/update event types, provider capability structs, session params.</td></tr>
+    <tr><td class="change-new">internal/agent/acp_manager.go</td><td>New</td><td>AcpManager: manages the ACP server process, session registry, event dispatch.</td></tr>
+    <tr><td class="change-new">internal/agent/acp_session.go</td><td>New</td><td>AcpSession: wraps a single ACP session — tracks state, streams events via channel, handles cancel/timeout.</td></tr>
+    <tr><td class="change-mod">internal/agent/runner.go</td><td>Update</td><td>AgentRunner interface updated: Start returns AcpSession handle; add Resume, Load.</td></tr>
+    <tr><td class="change-del">internal/agent/opencode/runner.go</td><td>Replace</td><td>Old subprocess runner replaced by ACP-based runner that talks to opencode serve.</td></tr>
+    <tr><td class="change-del">internal/agent/acprunner/runner.go</td><td>Remove</td><td>Merged into the new AcpManager/AcpSession.</td></tr>
+    <tr><td class="change-mod">cmd/codeg/main.go</td><td>Update</td><td>Start opencode serve as child process; wire AcpManager.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 2: SubTask Data Model &amp; Storage</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-new">internal/task/subtask_model.go</td><td>New</td><td>SubTask struct, SubTaskStatus enum, phase constants.</td></tr>
+    <tr><td class="change-new">internal/task/subtask_store.go</td><td>New</td><td>SQLite schema for subtasks table, full CRUD, phase transition helpers.</td></tr>
+    <tr><td class="change-new">internal/task/subtask_manager.go</td><td>New</td><td>SubTaskManager: lifecycle, phase transitions (planned→coding→verifying→done), session linking.</td></tr>
+    <tr><td class="change-mod">internal/task/model.go</td><td>Extend</td><td>Add SubTaskIDs []string to Task.</td></tr>
+    <tr><td class="change-mod">internal/task/manager.go</td><td>Extend</td><td>Add sub-task CRUD, planning orchestration methods.</td></tr>
+    <tr><td class="change-mod">internal/task/store.go</td><td>Extend</td><td>Schema migration for subtasks table and indexes.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 3: Plan Mode — Task Decomposition</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-new">internal/task/planner.go</td><td>New</td><td>LLM-driven task decomposition. Sends task description to OpenAI, parses structured sub-task list, returns to TUI for user editing.</td></tr>
+    <tr><td class="change-new">internal/tui/components/plan_mode.go</td><td>New</td><td>Plan mode TUI component: shows LLM-suggested sub-tasks, allows editing (add/remove/reorder), confirms plan.</td></tr>
+    <tr><td class="change-mod">internal/tui/app.go</td><td>Extend</td><td>Add plan mode state, 'p' keybinding, plan mode → sub-task creation flow.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 4: Two-Phase Agent Execution</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-mod">internal/agent/core/controller.go</td><td>Rewrite</td><td>New controller: StartSubTaskCoding(subTask), StartSubTaskVerification(subTask). Each creates an ACP session with correct role + directory.</td></tr>
+    <tr><td class="change-mod">internal/tui/app.go</td><td>Extend</td><td>Phase transition logic: coding done → auto-start verification. 'r' runs next planned sub-task. 'f' forces verification.</td></tr>
+    <tr><td class="change-mod">internal/tui/components/agent_panel.go</td><td>Extend</td><td>Show current phase label, per-subtask output buffer.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 5: TUI Monitoring Dashboard</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-new">internal/tui/components/subtask_list.go</td><td>New</td><td>Sub-task tree/list under each task. Status dots per phase. Indented directory + phase display.</td></tr>
+    <tr><td class="change-new">internal/tui/components/subtask_detail.go</td><td>New</td><td>Sub-task detail panel: phase progress bar, session IDs, timestamps, re-run buttons.</td></tr>
+    <tr><td class="change-mod">internal/tui/components/dashboard.go</td><td>Extend</td><td>New layout: task list → sub-task tree + detail + agent output.</td></tr>
+    <tr><td class="change-mod">internal/tui/components/status_bar.go</td><td>Extend</td><td>Show sub-task counts, active phase indicators.</td></tr>
+    <tr><td class="change-mod">internal/tui/components/help_bar.go</td><td>Extend</td><td>New keybindings for plan mode, sub-task navigation.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 6: Polish &amp; Orchestration</h3>
+<table>
+  <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td class="change-mod">cmd/codeg/main.go</td><td>Extend</td><td>ACP server lifecycle management (start/stop opencode serve). Sub-task orchestration wiring.</td></tr>
+    <tr><td class="change-mod">internal/config/config.go</td><td>Extend</td><td>ACP server port, provider config, planning model selection.</td></tr>
+    <tr><td class="change-mod">go.mod</td><td>Update</td><td>No new dependencies needed — existing bubbletea + net/http cover everything.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Keybinding Changes ── -->
+<h2>6. Keybinding Changes</h2>
+<table>
+  <thead><tr><th>Key</th><th>Mode</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>p</code></td><td>Dashboard</td><td class="change-new">Enter plan mode for selected task (LLM decomposition)</td></tr>
+    <tr><td><code>Enter</code></td><td>Plan mode</td><td class="change-new">Confirm sub-task plan → create all sub-tasks</td></tr>
+    <tr><td><code>e</code></td><td>Plan mode</td><td class="change-new">Edit selected sub-task (title, description, directory)</td></tr>
+    <tr><td><code>+</code></td><td>Plan mode</td><td class="change-new">Add a sub-task manually</td></tr>
+    <tr><td><code>-</code></td><td>Plan mode</td><td class="change-new">Remove selected sub-task</td></tr>
+    <tr><td><code>r</code></td><td>Dashboard</td><td class="change-mod">Run next planned sub-task (coding phase) / re-run verification</td></tr>
+    <tr><td><code>f</code></td><td>Dashboard</td><td class="change-mod">Force verification phase on selected sub-task</td></tr>
+    <tr><td><code>↑/↓</code></td><td>SubTask list</td><td class="change-new">Navigate between sub-tasks</td></tr>
+    <tr><td><code>Tab</code></td><td>SubTask list</td><td class="change-new">Toggle between task list and sub-task list</td></tr>
+  </tbody>
+</table>
+
+<!-- ── ACP Event Mapping ── -->
+<h2>7. ACP Event → TUI Mapping</h2>
+<table>
+  <thead><tr><th>ACP session/update Event</th><th>TUI Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>agent_message_chunk</code></td><td>Append text to sub-task's agent output panel</td></tr>
+    <tr><td><code>tool_call</code></td><td>Show <span style="color:var(--blue);">[tool] name</span> in output</td></tr>
+    <tr><td><code>tool_call_update</code></td><td>Append tool output to panel</td></tr>
+    <tr><td><code>process_output</code></td><td>Show shell output lines</td></tr>
+    <tr><td><code>turn_complete</code></td><td>Phase transition: coding→verifying or verifying→done</td></tr>
+    <tr><td><code>usage_update</code></td><td>Update token counter in status bar</td></tr>
+    <tr><td><code>error</code></td><td>Show error in status bar, mark sub-task failed</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Verification ── -->
+<h2>8. Verification Plan</h2>
+
+<h4>Unit Tests</h4>
+<table>
+  <thead><tr><th>Test file</th><th>What it verifies</th></tr></thead>
+  <tbody>
+    <tr><td><code>internal/task/subtask_store_test.go</code></td><td>SubTask CRUD, phase transitions, session linking</td></tr>
+    <tr><td><code>internal/task/planner_test.go</code></td><td>LLM decomposition with mock HTTP server</td></tr>
+    <tr><td><code>internal/acp/client_test.go</code></td><td>JSON-RPC serialization, SSE parsing, reconnection</td></tr>
+    <tr><td><code>internal/agent/acp_session_test.go</code></td><td>Session lifecycle, event streaming, cancel/timeout</td></tr>
+    <tr><td><code>internal/tui/app_test.go</code></td><td>Keybinding handlers, state transitions, view rendering</td></tr>
+  </tbody>
+</table>
+
+<h4>Integration Test</h4>
+<pre><code># 1. Start opencode serve
+opencode serve --port 4200 &
+
+# 2. Run codeg integration test
+go test -v -run TestACPIntegration ./cmd/codeg/ -timeout 120s
+
+# Verifies:
+# - ACP initialize → handshake
+# - session/new → session created, cwd correct
+# - session/prompt → agent responds
+# - SSE streaming → events received
+# - session/cancel → agent stopped
+# - SubTask creation → plan → coding → verifying → done</code></pre>
+
+<h4>Manual Checklist</h4>
+<ol>
+  <li>Launch TUI → empty task list</li>
+  <li>Create task → enter plan mode (<code>p</code>) → LLM suggests sub-tasks → confirm</li>
+  <li>Sub-tasks appear in tree under task with planned status</li>
+  <li>Select sub-task → press <code>r</code> → coding phase starts → ACP session created in sub-task directory</li>
+  <li>Agent output streams in real-time in the bottom panel</li>
+  <li>Coding completes → auto-transitions to verification phase</li>
+  <li>Verification agent checks work → shows results → sub-task marked done</li>
+  <li>Next sub-task auto-starts (or press <code>r</code>)</li>
+  <li>All sub-tasks done → task marked complete → summary generated</li>
+</ol>
+
+<!-- ── Risk &amp; Edge Cases ── -->
+<h2>9. Risks &amp; Mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>opencode serve crashes mid-session</td><td>AcpManager monitors child process health; auto-restarts server; sessions persist in SQLite for resume</td></tr>
+    <tr><td>Verification agent finds no issues (false positive)</td><td>GATE prompts include specific checks: "verify every file mentioned in the coding session, run tests, check for edge cases"</td></tr>
+    <tr><td>Sub-tasks have dependencies (ordering)</td><td>OrderIndex enforces sequential execution; dependency graph can be added later</td></tr>
+    <tr><td>LLM produces bad sub-task decomposition</td><td>Plan mode is interactive — user can edit, add, remove, reorder sub-tasks before confirming</td></tr>
+    <tr><td>ACP server port conflicts</td><td>Use random port (port 0) and read actual port from server log output</td></tr>
+  </tbody>
+</table>
+
+<hr style="border: none; border-top: 1px solid var(--overlay); margin: 3rem 0 1rem;">
+
+<p style="font-size:.78rem; color:var(--muted);">
+  codeg v2 Plan · Sub-Task Architecture + ACP Protocol Rework<br>
+  Target: 10 new files · 7 modified · 3 removed · ~3,500 net new lines of Go<br>
+  Catppuccin Mocha theme
+</p>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: {
+  darkMode: true, background: '#1e1e2e', primaryColor: '#89b4fa', primaryTextColor: '#1e1e2e',
+  primaryBorderColor: '#89b4fa', lineColor: '#585b70', secondaryColor: '#313244', tertiaryColor: '#45475a',
+  textColor: '#cdd6f4', nodeBorder: '#45475a', clusterBkg: '#313244', clusterBorder: '#45475a',
+  titleColor: '#cba6f7', edgeLabelBackground: '#313244', fontSize: '14px'
+}});</script>
+</body>
+</html>

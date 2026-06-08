@@ -51,11 +51,17 @@ type Task struct {
 	Priority    TaskPriority     `json:"priority"`
 	BoundDirs   []BoundDirectory `json:"boundDirs"`
 	SessionIDs  []string         `json:"sessionIds"`
+	SubTaskIDs  []string         `json:"subTaskIds"`
 	Labels      []string         `json:"labels"`
 	Summary     string           `json:"summary"`
 	CreatedAt   time.Time        `json:"createdAt"`
 	UpdatedAt   time.Time        `json:"updatedAt"`
 	CompletedAt *time.Time       `json:"completedAt,omitempty"`
+}
+
+// HasSubTasks returns true if the task has sub-tasks.
+func (t *Task) HasSubTasks() bool {
+	return len(t.SubTaskIDs) > 0
 }
 
 // TaskFilter defines criteria for listing tasks.

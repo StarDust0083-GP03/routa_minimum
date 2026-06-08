@@ -18,18 +18,26 @@ type EventHandler func(event SSEEvent)
 
 // ACPClient communicates with an ACP-compatible agent server.
 type ACPClient struct {
-	serverURL string
-	rpcClient *http.Client // for JSON-RPC calls (with timeout)
-	sseClient *http.Client // for SSE streaming (no timeout)
-	onEvent   EventHandler
+	serverURL   string // full ACP endpoint: http://host:port/api/acp
+	baseURL     string // server root: http://host:port
+	rpcClient   *http.Client
+	sseClient   *http.Client
+	onEvent     EventHandler
+	initialized bool // tracks whether initialize handshake completed
 }
 
 // NewACPClient creates a new ACP client.
 func NewACPClient(serverURL string) *ACPClient {
+	// Derive base URL (strip /api/acp suffix) for health checks
+	baseURL := serverURL
+	if idx := strings.Index(serverURL, "/api/"); idx >= 0 {
+		baseURL = serverURL[:idx]
+	}
 	return &ACPClient{
 		serverURL: serverURL,
+		baseURL:   baseURL,
 		rpcClient: &http.Client{Timeout: 10 * time.Second},
-		sseClient: &http.Client{Timeout: 0}, // No timeout for long-lived SSE
+		sseClient: &http.Client{Timeout: 0},
 	}
 }
 
@@ -221,19 +229,121 @@ func (c *ACPClient) buildEvent(eventType string, dataLines []string) SSEEvent {
 }
 
 // Ping checks if the ACP server is reachable.
+// Tries health endpoints first, then falls back to a lightweight JSON-RPC call.
 func (c *ACPClient) Ping(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.serverURL+"/health", nil)
-	if err != nil {
-		return err
-	}
 	httpClient := &http.Client{Timeout: 5 * time.Second}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
+
+	// Try health endpoints first
+	urls := []string{
+		c.baseURL + "/health",
+		c.serverURL + "/health",
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("server unhealthy: status %d", resp.StatusCode)
+	for _, url := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode < 400 {
+			return nil
+		}
+	}
+
+	// Fallback: try a cheap JSON-RPC call to verify the ACP endpoint responds
+	req := NewRequest("ping", nil)
+	_, err := c.doRPC(ctx, req)
+	if err != nil {
+		// Even an RPC error response means the server is alive
+		if strings.Contains(err.Error(), "RPC error") {
+			return nil
+		}
+		return err
 	}
 	return nil
+}
+
+// HealthCheck polls the server until it responds or ctx is cancelled.
+// Uses exponential backoff with a cap to avoid excessive wait times.
+func (c *ACPClient) HealthCheck(ctx context.Context, maxRetries int, delay time.Duration) error {
+	maxDelay := 5 * time.Second
+	for i := 0; i < maxRetries; i++ {
+		if err := c.Ping(ctx); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
+	}
+	return fmt.Errorf("server not reachable after %d retries", maxRetries)
+}
+
+// Reconnect attempts to reconnect to an existing session with exponential backoff.
+// It subscribes to SSE events and returns the first event received, or an error if all retries fail.
+func (c *ACPClient) Reconnect(ctx context.Context, sessionID string, maxRetries int) (<-chan SSEEvent, error) {
+	var lastErr error
+	delay := 500 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		ch, err := c.SubscribeEvents(ctx, sessionID)
+		if err == nil {
+			return ch, nil
+		}
+		lastErr = err
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+			delay *= 2
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+		}
+	}
+	return nil, fmt.Errorf("reconnect failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// Initialize performs the ACP handshake with the server.
+// Safe to call multiple times — subsequent calls are no-ops.
+func (c *ACPClient) Initialize(ctx context.Context) (*InitializeResult, error) {
+	if c.initialized {
+		return &InitializeResult{ProtocolVersion: 1}, nil
+	}
+
+	req := NewRequest("initialize", map[string]interface{}{
+		"protocolVersion": 1,
+	})
+	resp, err := c.doRPC(ctx, req)
+	if err != nil {
+		// Initialize is optional — some ACP servers auto-negotiate.
+		// Mark as initialized anyway so we don't keep retrying.
+		c.initialized = true
+		return nil, fmt.Errorf("initialize failed (non-fatal): %w", err)
+	}
+
+	var result InitializeResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		c.initialized = true
+		return nil, fmt.Errorf("failed to parse initialize response (non-fatal): %w", err)
+	}
+	c.initialized = true
+	return &result, nil
+}
+
+// InitializeResult holds the server's initialize response.
+type InitializeResult struct {
+	ProtocolVersion int    `json:"protocolVersion"`
+	ServerName      string `json:"serverName,omitempty"`
+	ServerVersion   string `json:"serverVersion,omitempty"`
+	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 }

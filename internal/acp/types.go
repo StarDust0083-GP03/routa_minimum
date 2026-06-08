@@ -2,7 +2,10 @@
 // ACP uses JSON-RPC 2.0 over HTTP with SSE for streaming agent updates.
 package acp
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 // JSONRPCRequest represents a JSON-RPC 2.0 request.
 type JSONRPCRequest struct {
@@ -66,6 +69,32 @@ type PromptResponse struct {
 	Status    string `json:"status"`
 }
 
+// SessionState tracks the lifecycle state of an ACP session.
+type SessionState string
+
+const (
+	SessionInitializing SessionState = "initializing"
+	SessionActive       SessionState = "active"
+	SessionStreaming    SessionState = "streaming"
+	SessionComplete     SessionState = "complete"
+	SessionCancelled    SessionState = "cancelled"
+	SessionError        SessionState = "error"
+)
+
+// ACPServerConfig holds configuration for the ACP server process.
+type ACPServerConfig struct {
+	Port     int    `json:"port"`     // 0 = random port
+	Provider string `json:"provider"` // e.g. "anthropic", "openai"
+	Model    string `json:"model"`    // model override
+}
+
+// SSESubscription wraps an active SSE connection.
+type SSESubscription struct {
+	SessionID string
+	Events    <-chan SSEEvent
+	cancel    context.CancelFunc
+}
+
 // SSE event type constants.
 const (
 	EventMessageChunk    = "agent_message_chunk"
@@ -100,3 +129,11 @@ func nextID() int {
 	idCounter++
 	return idCounter
 }
+
+// AgentRole defines the role an agent plays in a session.
+type AgentRole string
+
+const (
+	RoleDeveloper AgentRole = "DEVELOPER"
+	RoleGate      AgentRole = "GATE"
+)
