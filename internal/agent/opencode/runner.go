@@ -161,6 +161,29 @@ func parseOpenCodeEvent(raw map[string]interface{}) acp.SSEEvent {
 		}
 		event.Data = map[string]interface{}{"text": text}
 
+	case "tool_use":
+		// opencode v1.14+ uses unified "tool_use" events
+		event.Type = acp.EventToolCall
+		if part != nil {
+			data := map[string]interface{}{}
+			if toolName, ok := part["tool"].(string); ok {
+				data["name"] = toolName
+			}
+			// Extract input/output from state if present
+			if state, ok := part["state"].(map[string]interface{}); ok {
+				if input, ok := state["input"].(map[string]interface{}); ok {
+					if cmd, ok := input["command"].(string); ok {
+						data["args"] = cmd
+					}
+				}
+				if output, ok := state["output"].(string); ok {
+					// Also send a tool_update with the output
+					data["output"] = truncateStr(output, 2000)
+				}
+			}
+			event.Data = data
+		}
+
 	case "tool_call":
 		if part != nil {
 			data := map[string]interface{}{}
@@ -177,7 +200,7 @@ func parseOpenCodeEvent(raw map[string]interface{}) acp.SSEEvent {
 		event.Type = acp.EventToolUpdate
 		if part != nil {
 			if result, ok := part["result"]; ok {
-				event.Data = map[string]interface{}{"output": fmt.Sprint(result)}
+				event.Data = map[string]interface{}{"output": truncateStr(fmt.Sprint(result), 2000)}
 			} else if text, ok := part["text"].(string); ok {
 				event.Data = map[string]interface{}{"output": text}
 			}
@@ -211,5 +234,12 @@ func parseOpenCodeEvent(raw map[string]interface{}) acp.SSEEvent {
 	}
 
 	return event
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 

@@ -98,3 +98,46 @@ func TestStart_Integration(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 }
+
+func TestParseOpenCodeEvent_ToolUse(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "tool_use",
+		"part": map[string]interface{}{
+			"tool": "bash",
+			"state": map[string]interface{}{
+				"input":  map[string]interface{}{"command": "ls -la"},
+				"output": "file1.txt\nfile2.txt",
+			},
+		},
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventToolCall {
+		t.Errorf("expected EventToolCall, got %q", evt.Type)
+	}
+	if evt.Data["name"] != "bash" {
+		t.Errorf("expected tool name 'bash', got %v", evt.Data["name"])
+	}
+}
+
+func TestParseOpenCodeEvent_StepStart(t *testing.T) {
+	raw := map[string]interface{}{
+		"type": "step_start",
+	}
+	evt := parseOpenCodeEvent(raw)
+	if evt.Type != acp.EventMessageChunk {
+		t.Errorf("expected EventMessageChunk, got %q", evt.Type)
+	}
+}
+
+func TestTruncateStr_Short(t *testing.T) {
+	if s := truncateStr("hello", 10); s != "hello" {
+		t.Errorf("expected 'hello', got %q", s)
+	}
+}
+
+func TestTruncateStr_Long(t *testing.T) {
+	s := truncateStr("0123456789abcdef", 10)
+	if len(s) > 13 {
+		t.Errorf("too long: %q", s)
+	}
+}
