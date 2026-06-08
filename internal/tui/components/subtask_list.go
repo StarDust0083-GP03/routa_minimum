@@ -123,6 +123,8 @@ func (s SubTaskList) statusDot(status task.SubTaskStatus) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#94E2D5")).Render("◷")
 	case task.SubTaskDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render("✓")
+	case task.SubTaskStuck:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render("⚠")
 	case task.SubTaskFailed:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F38BA8")).Render("✗")
 	}
@@ -137,6 +139,8 @@ func (s SubTaskList) phaseText(st *task.SubTask) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F9E2AF")).Render("coding...")
 	case task.SubTaskVerifying:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#94E2D5")).Render("verifying...")
+	case task.SubTaskStuck:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render("⚠ stuck")
 	case task.SubTaskDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render("✓ done")
 	case task.SubTaskFailed:

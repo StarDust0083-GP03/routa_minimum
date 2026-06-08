@@ -54,6 +54,23 @@ type agentErrorMsg struct {
 	err    error
 }
 
+type codingJudgeResultMsg struct {
+	taskID    string
+	subTaskID string
+	verdict   task.CompletionVerdict
+	reason    string
+	taskObj   *task.Task
+	st        *task.SubTask
+}
+
+type verifyJudgeResultMsg struct {
+	taskID    string
+	subTaskID string
+	verdict   task.VerificationVerdict
+	reason    string
+	taskObj   *task.Task
+}
+
 // --- Model ---
 
 type Model struct {
@@ -468,6 +485,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case components.AgentDoneMsg:
 		return m.handleAgentDone(msg, &cmds)
 
+	case codingJudgeResultMsg:
+		return m.handleCodingJudgeResult(msg, &cmds)
+
+	case verifyJudgeResultMsg:
+		return m.handleVerifyJudgeResult(msg, &cmds)
+
 	case error:
 		m.errorMsg = msg.Error()
 		return m, nil
@@ -481,7 +504,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// handleAgentDone processes phase completion and auto-transitions.
+// handleAgentDone processes phase completion. For coding, it dispatches an OpenAI
+// judge call to determine if the task was completed before auto-transitioning.
+// For verification, it dispatches a judge call to check if verification passed.
 func (m Model) handleAgentDone(msg components.AgentDoneMsg, cmds *[]tea.Cmd) (tea.Model, tea.Cmd) {
 	if msg.SubTaskID != m.activeSubID {
 		var cmd tea.Cmd
@@ -490,74 +515,186 @@ func (m Model) handleAgentDone(msg components.AgentDoneMsg, cmds *[]tea.Cmd) (te
 		return m, tea.Batch(*cmds...)
 	}
 
+	taskObj := m.taskList.SelectedTask()
+	var st *task.SubTask
+	for _, s := range m.subTasks {
+		if s.ID == msg.SubTaskID {
+			st = s
+			break
+		}
+	}
+
 	if msg.Phase == task.PhaseCoding {
-		// Coding done → auto-start verification
-		taskObj := m.taskList.SelectedTask()
-		var st *task.SubTask
-		for _, s := range m.subTasks {
-			if s.ID == msg.SubTaskID {
-				st = s
-				break
-			}
-		}
+		// Coding done → ask OpenAI judge to determine if task is complete
 		if st != nil && taskObj != nil {
-			*cmds = append(*cmds, m.runSubTaskVerifyCmd(st, taskObj))
-			m.errorMsg = "Coding done. Starting verification..."
+			agentOutput := m.agentPanel.GetFullOutput()
+			*cmds = append(*cmds, m.judgeCodingCmd(msg.SubTaskID, taskObj, st, agentOutput))
+			m.errorMsg = "Coding done. Judging completion..."
 		}
-		*cmds = append(*cmds, m.loadSubTasks(m.activeTaskID))
-
 	} else if msg.Phase == task.PhaseVerifying {
-		// Verification done → mark sub-task done in memory first so
-		// AllDone/NextPlanned checks use current state, not stale DB state.
-		m.activeSubID = ""
-		m.activePhase = ""
-		m.agentController.RemoveHandle(msg.SubTaskID)
-		m.agentPanel.SetInactive()
-
-		for i, st := range m.subTasks {
-			if st.ID == msg.SubTaskID {
-				m.subTasks[i].Status = task.SubTaskDone
-				break
-			}
+		// Verification done → ask OpenAI judge to determine if it passed
+		if st != nil && taskObj != nil {
+			agentOutput := m.agentPanel.GetFullOutput()
+			*cmds = append(*cmds, m.judgeVerificationCmd(msg.SubTaskID, taskObj, st, agentOutput))
+			m.errorMsg = "Verification done. Judging results..."
 		}
-
-		*cmds = append(*cmds, m.markSubTaskDoneCmd(msg.SubTaskID))
-
-		if m.taskManager.SubTasks() != nil {
-			taskObj := m.taskList.SelectedTask()
-			if taskObj != nil {
-				allDone := true
-				for _, st := range m.subTasks {
-					if !st.Status.IsTerminal() {
-						allDone = false
-						break
-					}
-				}
-				if allDone {
-					*cmds = append(*cmds, m.completeTaskCmd(taskObj.ID))
-					m.errorMsg = "All sub-tasks done. Task completed."
-				} else {
-					var next *task.SubTask
-					for _, st := range m.subTasks {
-						if st.Status == task.SubTaskPlanned {
-							next = st
-							break
-						}
-					}
-					if next != nil {
-						*cmds = append(*cmds, m.runSubTaskCodingCmd(next, taskObj))
-						m.errorMsg = fmt.Sprintf("Starting next sub-task: %s", next.Title)
-					}
-				}
-			}
-		}
-		*cmds = append(*cmds, m.loadSubTasks(m.activeTaskID))
 	}
 
 	var cmd tea.Cmd
 	m.agentPanel, cmd = m.agentPanel.Update(msg)
 	*cmds = append(*cmds, cmd)
 	return m, tea.Batch(*cmds...)
+}
+
+// judgeCodingCmd calls OpenAI to determine if the coding session completed its task.
+func (m *Model) judgeCodingCmd(subTaskID string, taskObj *task.Task, st *task.SubTask, agentOutput string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		verdict, reason := task.JudgeCodingComplete(ctx, m.taskManager.GetLLMClient(), st.Title, st.Description, agentOutput)
+		return codingJudgeResultMsg{
+			taskID: taskObj.ID, subTaskID: subTaskID,
+			verdict: verdict, reason: reason,
+			taskObj: taskObj, st: st,
+		}
+	}
+}
+
+// judgeVerificationCmd calls OpenAI to determine if the verification passed.
+func (m *Model) judgeVerificationCmd(subTaskID string, taskObj *task.Task, st *task.SubTask, agentOutput string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		verdict, reason := task.JudgeVerification(ctx, m.taskManager.GetLLMClient(), st.Title, agentOutput)
+		return verifyJudgeResultMsg{
+			taskID: taskObj.ID, subTaskID: subTaskID,
+			verdict: verdict, reason: reason,
+			taskObj: taskObj,
+		}
+	}
+}
+
+func (m Model) handleCodingJudgeResult(msg codingJudgeResultMsg, cmds *[]tea.Cmd) (tea.Model, tea.Cmd) {
+	m.errorMsg = fmt.Sprintf("Coding judge: %s — %s", msg.verdict, msg.reason)
+
+	switch msg.verdict {
+	case task.VerdictCompleted:
+		// Coding completed successfully → auto-start verification
+		if msg.st != nil && msg.taskObj != nil {
+			*cmds = append(*cmds, m.runSubTaskVerifyCmd(msg.st, msg.taskObj))
+			m.errorMsg = "Coding complete. Starting verification..."
+		}
+
+	case task.VerdictStuck:
+		// Agent got stuck → mark as stuck, warn user
+		m.activeSubID = ""
+		m.activePhase = ""
+		m.agentController.RemoveHandle(msg.subTaskID)
+		m.agentPanel.SetInactive()
+		for i, st := range m.subTasks {
+			if st.ID == msg.subTaskID {
+				m.subTasks[i].Status = task.SubTaskStuck
+				break
+			}
+		}
+		*cmds = append(*cmds, m.markSubTaskStuckCmd(msg.subTaskID))
+		m.errorMsg = fmt.Sprintf("STUCK: %s — press 'r' to retry", msg.reason)
+
+	case task.VerdictFailed:
+		// Coding failed
+		m.activeSubID = ""
+		m.activePhase = ""
+		m.agentController.RemoveHandle(msg.subTaskID)
+		m.agentPanel.SetInactive()
+		for i, st := range m.subTasks {
+			if st.ID == msg.subTaskID {
+				m.subTasks[i].Status = task.SubTaskFailed
+				break
+			}
+		}
+		*cmds = append(*cmds, m.markSubTaskFailedCmd(msg.subTaskID))
+	}
+
+	*cmds = append(*cmds, m.loadSubTasks(m.activeTaskID))
+	return m, tea.Batch(*cmds...)
+}
+
+func (m Model) handleVerifyJudgeResult(msg verifyJudgeResultMsg, cmds *[]tea.Cmd) (tea.Model, tea.Cmd) {
+	m.activeSubID = ""
+	m.activePhase = ""
+	m.agentController.RemoveHandle(msg.subTaskID)
+	m.agentPanel.SetInactive()
+
+	switch msg.verdict {
+	case task.VerifyPassed:
+		// Verification passed → mark done and auto-start next
+		for i, st := range m.subTasks {
+			if st.ID == msg.subTaskID {
+				m.subTasks[i].Status = task.SubTaskDone
+				break
+			}
+		}
+		*cmds = append(*cmds, m.markSubTaskDoneCmd(msg.subTaskID))
+		m.errorMsg = fmt.Sprintf("Verification PASSED: %s", msg.reason)
+
+		// Auto-start next planned or complete task
+		if m.taskManager.SubTasks() != nil && msg.taskObj != nil {
+			allDone := true
+			for _, st := range m.subTasks {
+				if !st.Status.IsTerminal() {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				*cmds = append(*cmds, m.completeTaskCmd(msg.taskObj.ID))
+				m.errorMsg = "All sub-tasks done. Task completed."
+			} else {
+				var next *task.SubTask
+				for _, st := range m.subTasks {
+					if st.Status == task.SubTaskPlanned {
+						next = st
+						break
+					}
+				}
+				if next != nil {
+					*cmds = append(*cmds, m.runSubTaskCodingCmd(next, msg.taskObj))
+				}
+			}
+		}
+
+	case task.VerifyFailed:
+		// Verification found issues → mark failed
+		for i, st := range m.subTasks {
+			if st.ID == msg.subTaskID {
+				m.subTasks[i].Status = task.SubTaskFailed
+				break
+			}
+		}
+		*cmds = append(*cmds, m.markSubTaskFailedCmd(msg.subTaskID))
+		m.errorMsg = fmt.Sprintf("Verification FAILED: %s", msg.reason)
+	}
+
+	*cmds = append(*cmds, m.loadSubTasks(m.activeTaskID))
+	return m, tea.Batch(*cmds...)
+}
+
+func (m *Model) markSubTaskStuckCmd(subTaskID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if m.taskManager.SubTasks() != nil {
+			_, _ = m.taskManager.SubTasks().TransitionStatus(ctx, subTaskID, task.SubTaskStuck)
+		}
+		return nil
+	}
+}
+
+func (m *Model) markSubTaskFailedCmd(subTaskID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if m.taskManager.SubTasks() != nil {
+			_, _ = m.taskManager.SubTasks().MarkFailed(ctx, subTaskID)
+		}
+		return nil
+	}
 }
 
 // --- Dashboard key handler ---

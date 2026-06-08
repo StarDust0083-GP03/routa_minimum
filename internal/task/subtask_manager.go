@@ -132,6 +132,11 @@ func (m *SubTaskManager) MarkFailed(ctx context.Context, id string) (*SubTask, e
 	return m.TransitionStatus(ctx, id, SubTaskFailed)
 }
 
+// MarkStuck marks a sub-task as stuck (agent couldn't complete).
+func (m *SubTaskManager) MarkStuck(ctx context.Context, id string) (*SubTask, error) {
+	return m.TransitionStatus(ctx, id, SubTaskStuck)
+}
+
 // LinkSession links an ACP session to a sub-task phase.
 func (m *SubTaskManager) LinkSession(ctx context.Context, subTaskID, phase, sessionID string) error {
 	return m.store.SetSessionID(ctx, subTaskID, phase, sessionID)

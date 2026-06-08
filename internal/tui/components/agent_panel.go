@@ -85,6 +85,11 @@ func (ap *AgentPanel) SetInactive() {
 	ap.isActive = false
 }
 
+// GetFullOutput returns the complete accumulated agent output text.
+func (ap *AgentPanel) GetFullOutput() string {
+	return ap.content.String()
+}
+
 // IsActive returns whether an agent is running.
 func (ap *AgentPanel) IsActive() bool {
 	return ap.isActive

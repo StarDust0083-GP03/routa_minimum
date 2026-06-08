@@ -10,13 +10,14 @@ const (
 	SubTaskPlanned   SubTaskStatus = "planned"
 	SubTaskCoding    SubTaskStatus = "coding"
 	SubTaskVerifying SubTaskStatus = "verifying"
+	SubTaskStuck     SubTaskStatus = "stuck"
 	SubTaskDone      SubTaskStatus = "done"
 	SubTaskFailed    SubTaskStatus = "failed"
 )
 
 // IsTerminal returns true if the sub-task is in a terminal state.
 func (s SubTaskStatus) IsTerminal() bool {
-	return s == SubTaskDone || s == SubTaskFailed
+	return s == SubTaskDone || s == SubTaskFailed || s == SubTaskStuck
 }
 
 // IsActive returns true if the sub-task can accept agent operations.
@@ -71,7 +72,7 @@ func (st *SubTask) ValidateTransition(newStatus SubTaskStatus) error {
 			return nil
 		}
 	case SubTaskCoding:
-		if newStatus == SubTaskVerifying || newStatus == SubTaskFailed || newStatus == SubTaskDone {
+		if newStatus == SubTaskVerifying || newStatus == SubTaskFailed || newStatus == SubTaskDone || newStatus == SubTaskStuck {
 			return nil
 		}
 	case SubTaskVerifying:
@@ -93,6 +94,8 @@ func (st *SubTask) CurrentPhase() string {
 		return PhaseCoding
 	case SubTaskVerifying:
 		return PhaseVerifying
+	case SubTaskStuck:
+		return "stuck"
 	case SubTaskDone:
 		return "done"
 	case SubTaskFailed:

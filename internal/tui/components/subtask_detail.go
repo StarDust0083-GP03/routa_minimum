@@ -120,6 +120,9 @@ func (s SubTaskDetail) renderPhaseProgress() string {
 		verifyColor = "#A6E3A1"
 		doneDot = "●"
 		doneColor = "#A6E3A1"
+	case task.SubTaskStuck:
+		codingDot = "⚠"
+		codingColor = "#FAB387"
 	case task.SubTaskFailed:
 		codingDot = "●"
 		codingColor = "#F38BA8"
@@ -140,6 +143,8 @@ func statusColored(status task.SubTaskStatus) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F9E2AF")).Render(string(status))
 	case task.SubTaskVerifying:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#94E2D5")).Render(string(status))
+	case task.SubTaskStuck:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render(string(status))
 	case task.SubTaskDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render(string(status))
 	case task.SubTaskFailed:
