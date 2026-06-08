@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,9 @@ import (
 )
 
 func TestPlanWithACP_Integration(t *testing.T) {
+	if _, err := exec.LookPath("opencode"); err != nil {
+		t.Skip("opencode not found in PATH")
+	}
 	runner := opencodeagent.NewRunner("")
 	ctrl := NewAgentController(runner)
 

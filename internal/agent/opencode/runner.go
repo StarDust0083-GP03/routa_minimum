@@ -85,8 +85,13 @@ func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRo
 		ch <- parseOpenCodeEvent(raw)
 	}
 
+	// Both goroutines must finish before closing ch to avoid panic
+	var wg sync.WaitGroup
+	wg.Add(2)
+
 	// Read stderr in background
 	go func() {
+		defer wg.Done()
 		sc := bufio.NewScanner(stderr)
 		for sc.Scan() {
 			ch <- acp.SSEEvent{
@@ -98,7 +103,7 @@ func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRo
 
 	// Read remaining stdout events in background
 	go func() {
-		defer close(ch)
+		defer wg.Done()
 		defer cmd.Wait()
 
 		for scanner.Scan() {
@@ -124,6 +129,12 @@ func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRo
 			Type: acp.EventTurnComplete,
 			Data: map[string]interface{}{},
 		}
+	}()
+
+	// Close channel after both goroutines complete
+	go func() {
+		wg.Wait()
+		close(ch)
 	}()
 
 	return &agent.StartResult{
