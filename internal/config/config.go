@@ -58,6 +58,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		DBPath:       filepath.Join(home, ".codeg", "codeg.db"),
 		ACPServerURL: "", // empty = manage own opencode serve process
+		ACP: ACPConfig{
+			Port: 4200, // fixed port so codeg can find opencode
+		},
 		OpenAI: OpenAIConfig{
 			Model: "gpt-4o-mini",
 		},

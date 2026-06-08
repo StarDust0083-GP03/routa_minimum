@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -88,41 +89,20 @@ func (m *AcpManager) StartServer(ctx context.Context) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start opencode serve: %w", err)
+		return fmt.Errorf("start ACP server: %w", err)
 	}
 
-	// Parse the port from server output (format: "ACP server listening on :<port>")
-	portCh := make(chan int, 1)
-
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if port, err := parsePortFromLine(line); err == nil {
-				portCh <- port
-				return
-			}
+	// Determine server URL
+	actualPort := m.cfg.Port
+	if actualPort == 0 {
+		// Random port — try to parse from server output
+		actualPort = parsePortFromOutput(stdout, stderr)
+		if actualPort == 0 {
+			return fmt.Errorf("timed out waiting for server port")
 		}
-	}()
-
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if port, err := parsePortFromLine(line); err == nil {
-				portCh <- port
-				return
-			}
-		}
-	}()
-
-	// Wait for port with timeout
-	select {
-	case port := <-portCh:
-		m.serverURL = fmt.Sprintf("http://localhost:%d/api/acp", port)
-	case <-time.After(10 * time.Second):
-		return fmt.Errorf("timed out waiting for server port")
 	}
+
+	m.serverURL = fmt.Sprintf("http://localhost:%d/api/acp", actualPort)
 
 	m.serverCmd = cmd
 	m.client = acp.NewACPClient(m.serverURL)
@@ -232,6 +212,30 @@ func (m *AcpManager) forwardEvents(session *AcpSession) {
 			Phase:     session.params.Phase,
 			Event:     evt,
 		}
+	}
+}
+
+// parsePortFromOutput scans stdout/stderr for a port number, with a timeout.
+func parsePortFromOutput(stdout, stderr io.Reader) int {
+	portCh := make(chan int, 1)
+
+	scan := func(r io.Reader) {
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			if port, err := parsePortFromLine(scanner.Text()); err == nil {
+				portCh <- port
+				return
+			}
+		}
+	}
+	go scan(stdout)
+	go scan(stderr)
+
+	select {
+	case port := <-portCh:
+		return port
+	case <-time.After(10 * time.Second):
+		return 0
 	}
 }
 

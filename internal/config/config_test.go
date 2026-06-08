@@ -29,8 +29,8 @@ func TestDefaultConfig(t *testing.T) {
 func TestDefaultConfig_StructFields(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.ACP.Port != 0 {
-		t.Errorf("expected ACP port 0 (random), got %d", cfg.ACP.Port)
+	if cfg.ACP.Port != 4200 {
+		t.Errorf("expected ACP port 4200 (default), got %d", cfg.ACP.Port)
 	}
 	if cfg.ACP.Provider != "" {
 		t.Errorf("expected empty ACP provider, got %q", cfg.ACP.Provider)
