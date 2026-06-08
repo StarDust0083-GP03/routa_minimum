@@ -237,3 +237,105 @@ func TestACPClientHTTPMock(t *testing.T) {
 		t.Errorf("Ping failed: %v", err)
 	}
 }
+
+
+func TestACPServerConfig_Defaults(t *testing.T) {
+	cfg := ACPServerConfig{}
+
+	if cmd := cfg.DefaultCommand(); cmd != "opencode serve" {
+		t.Errorf("expected default command 'opencode serve', got %q", cmd)
+	}
+	if flag := cfg.DefaultPortFlag(); flag != "--port" {
+		t.Errorf("expected default port flag '--port', got %q", flag)
+	}
+}
+
+func TestACPServerConfig_Custom(t *testing.T) {
+	cfg := ACPServerConfig{
+		Command:  "opencode2 acp",
+		PortFlag: "-p",
+		Port:     4200,
+	}
+
+	if cmd := cfg.DefaultCommand(); cmd != "opencode2 acp" {
+		t.Errorf("expected 'opencode2 acp', got %q", cmd)
+	}
+	if flag := cfg.DefaultPortFlag(); flag != "-p" {
+		t.Errorf("expected '-p', got %q", flag)
+	}
+}
+
+func TestACPServerConfig_CommandArgs_Default(t *testing.T) {
+	cfg := ACPServerConfig{}
+	binary, args := cfg.CommandArgs()
+
+	if binary != "opencode" {
+		t.Errorf("expected binary 'opencode', got %q", binary)
+	}
+	if len(args) != 1 || args[0] != "serve" {
+		t.Errorf("expected args ['serve'], got %v", args)
+	}
+}
+
+func TestACPServerConfig_CommandArgs_Custom(t *testing.T) {
+	cfg := ACPServerConfig{
+		Command: "my-acp-server start --verbose",
+	}
+	binary, args := cfg.CommandArgs()
+
+	if binary != "my-acp-server" {
+		t.Errorf("expected binary 'my-acp-server', got %q", binary)
+	}
+	if len(args) != 2 {
+		t.Errorf("expected 2 args, got %d: %v", len(args), args)
+	}
+	if args[0] != "start" || args[1] != "--verbose" {
+		t.Errorf("expected ['start', '--verbose'], got %v", args)
+	}
+}
+
+func TestSplitCommand_Simple(t *testing.T) {
+	parts := splitCommand("opencode serve")
+	if len(parts) != 2 || parts[0] != "opencode" || parts[1] != "serve" {
+		t.Errorf("expected ['opencode', 'serve'], got %v", parts)
+	}
+}
+
+func TestSplitCommand_Single(t *testing.T) {
+	parts := splitCommand("opencode")
+	if len(parts) != 1 || parts[0] != "opencode" {
+		t.Errorf("expected ['opencode'], got %v", parts)
+	}
+}
+
+func TestSplitCommand_WithFlags(t *testing.T) {
+	parts := splitCommand("opencode serve --verbose")
+	if len(parts) != 3 {
+		t.Errorf("expected 3 parts, got %d: %v", len(parts), parts)
+	}
+	if parts[2] != "--verbose" {
+		t.Errorf("expected '--verbose', got %q", parts[2])
+	}
+}
+
+func TestSplitCommand_Empty(t *testing.T) {
+	parts := splitCommand("")
+	if len(parts) != 0 {
+		t.Errorf("expected 0 parts, got %v", parts)
+	}
+}
+
+func TestSplitCommand_Spaces(t *testing.T) {
+	parts := splitCommand("  opencode   serve  ")
+	if len(parts) != 2 || parts[0] != "opencode" || parts[1] != "serve" {
+		t.Errorf("expected ['opencode', 'serve'], got %v", parts)
+	}
+}
+
+func TestACPServerConfig_CommandArgs_EmptyCommand(t *testing.T) {
+	cfg := ACPServerConfig{Command: ""}
+	binary, args := cfg.CommandArgs()
+	if binary != "opencode" || len(args) != 1 || args[0] != "serve" {
+		t.Errorf("expected fallback to opencode serve, got %s %v", binary, args)
+	}
+}

@@ -51,14 +51,22 @@ func NewAcpManager(cfg acp.ACPServerConfig) *AcpManager {
 	}
 }
 
-// StartServer launches opencode serve as a child process.
+// StartServer launches the ACP server as a child process.
+// The command and port flag are configurable (e.g. "opencode serve" or "opencode2 acp").
 // If cfg.Port is 0, a random port is used and parsed from server output.
 func (m *AcpManager) StartServer(ctx context.Context) error {
-	args := []string{"serve"}
+	// Get binary and base args from configured command
+	binary, baseArgs := m.cfg.CommandArgs()
+	portFlag := m.cfg.DefaultPortFlag()
+
+	args := make([]string, len(baseArgs))
+	copy(args, baseArgs)
+
+	// Add port flag
 	if m.cfg.Port > 0 {
-		args = append(args, "--port", strconv.Itoa(m.cfg.Port))
+		args = append(args, portFlag, strconv.Itoa(m.cfg.Port))
 	} else {
-		args = append(args, "--port", "0") // random port
+		args = append(args, portFlag, "0") // random port
 	}
 	if m.cfg.Provider != "" {
 		args = append(args, "--provider", m.cfg.Provider)
@@ -67,7 +75,7 @@ func (m *AcpManager) StartServer(ctx context.Context) error {
 		args = append(args, "--model", m.cfg.Model)
 	}
 
-	cmd := exec.CommandContext(ctx, "opencode", args...)
+	cmd := exec.CommandContext(ctx, binary, args...)
 
 	// Capture stdout to parse the port
 	stdout, err := cmd.StdoutPipe()

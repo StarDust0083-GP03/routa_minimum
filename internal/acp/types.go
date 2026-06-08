@@ -83,9 +83,71 @@ const (
 
 // ACPServerConfig holds configuration for the ACP server process.
 type ACPServerConfig struct {
+	Command  string `json:"command"`  // binary + subcommand, e.g. "opencode serve" or "opencode2 acp"
+	PortFlag string `json:"portFlag"` // port flag, e.g. "--port" or "-p"
 	Port     int    `json:"port"`     // 0 = random port
 	Provider string `json:"provider"` // e.g. "anthropic", "openai"
 	Model    string `json:"model"`    // model override
+}
+
+// DefaultCommand returns the default ACP command if none is configured.
+func (c *ACPServerConfig) DefaultCommand() string {
+	if c.Command == "" {
+		return "opencode serve"
+	}
+	return c.Command
+}
+
+// DefaultPortFlag returns the default port flag if none is configured.
+func (c *ACPServerConfig) DefaultPortFlag() string {
+	if c.PortFlag == "" {
+		return "--port"
+	}
+	return c.PortFlag
+}
+
+// CommandArgs returns the command split into binary + initial args.
+func (c *ACPServerConfig) CommandArgs() (string, []string) {
+	cmd := c.DefaultCommand()
+	parts := splitCommand(cmd)
+	if len(parts) == 0 {
+		return "opencode", []string{"serve"}
+	}
+	return parts[0], parts[1:]
+}
+
+// splitCommand splits a command string into parts, respecting quoted strings.
+func splitCommand(cmd string) []string {
+	var parts []string
+	var current []rune
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, ch := range cmd {
+		switch {
+		case ch == '"' || ch == '\'':
+			if inQuote && ch == quoteChar {
+				inQuote = false
+				quoteChar = 0
+			} else if !inQuote {
+				inQuote = true
+				quoteChar = ch
+			} else {
+				current = append(current, ch)
+			}
+		case ch == ' ' && !inQuote:
+			if len(current) > 0 {
+				parts = append(parts, string(current))
+				current = nil
+			}
+		default:
+			current = append(current, ch)
+		}
+	}
+	if len(current) > 0 {
+		parts = append(parts, string(current))
+	}
+	return parts
 }
 
 // SSESubscription wraps an active SSE connection.

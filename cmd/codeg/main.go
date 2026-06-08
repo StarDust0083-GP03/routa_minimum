@@ -106,8 +106,10 @@ func main() {
 		// Connect to an external ACP server
 		agentRunner = opencodeagent.NewRunner(cfg.ACPServerURL)
 	} else {
-		// Start and manage our own opencode serve process
+		// Start and manage our own ACP server process
 		acpMgr = agent.NewAcpManager(acp.ACPServerConfig{
+			Command:  cfg.ACP.Command,
+			PortFlag: cfg.ACP.PortFlag,
 			Port:     cfg.ACP.Port,
 			Provider: cfg.ACP.Provider,
 			Model:    cfg.ACP.Model,

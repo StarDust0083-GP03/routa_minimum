@@ -32,6 +32,8 @@ type Config struct {
 
 // ACPConfig holds configuration for the managed ACP server process.
 type ACPConfig struct {
+	Command  string `json:"command"`  // binary + subcommand, e.g. "opencode serve" or "opencode2 acp"
+	PortFlag string `json:"portFlag"` // port flag, e.g. "--port" or "-p"
 	Port     int    `json:"port"`     // 0 = random port
 	Provider string `json:"provider"` // e.g. "anthropic", "openai"
 	Model    string `json:"model"`    // model override
@@ -104,6 +106,12 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("CODEG_WORKSPACE"); v != "" {
 		cfg.DefaultWorkspace = v
 	}
+	if v := os.Getenv("CODEG_ACP_COMMAND"); v != "" {
+		cfg.ACP.Command = v
+	}
+	if v := os.Getenv("CODEG_ACP_PORT_FLAG"); v != "" {
+		cfg.ACP.PortFlag = v
+	}
 	if v := os.Getenv("CODEG_ACP_PORT"); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.ACP.Port)
 	}
@@ -125,3 +133,4 @@ func (c *Config) EnsureDir() error {
 	dir := filepath.Dir(c.DBPath)
 	return os.MkdirAll(dir, 0755)
 }
+
