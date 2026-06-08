@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"codeg/internal/acp"
-	"codeg/internal/agent"
 	"codeg/internal/agent/core"
 	"codeg/internal/task"
 	"codeg/internal/tui/components"
@@ -77,7 +76,6 @@ type Model struct {
 	taskManager     *task.TaskManager
 	agentController *core.AgentController
 	taskStore       task.TaskStore
-	acpManager      *agent.AcpManager
 
 	agentEvents chan tea.Msg
 
@@ -1099,7 +1097,5 @@ func (m *Model) selectedTaskID() string {
 	return ""
 }
 
-func (m *Model) SetAcpManager(mgr *agent.AcpManager) { m.acpManager = mgr }
-func (m *Model) GetAcpManager() *agent.AcpManager     { return m.acpManager }
 func (m *Model) GetTaskManager() *task.TaskManager     { return m.taskManager }
 func (m *Model) GetAgentController() *core.AgentController { return m.agentController }
