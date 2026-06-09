@@ -1139,6 +1139,14 @@ func (m *Model) selectedTaskID() string {
 func (m *Model) GetTaskManager() *task.TaskManager     { return m.taskManager }
 func (m *Model) GetAgentController() *core.AgentController { return m.agentController }
 
+// Close cleans up resources: cancels running agents and closes event channel.
+func (m *Model) Close() {
+	for _, id := range m.agentController.RunningSubTasks() {
+		m.agentController.RemoveHandle(id)
+	}
+	close(m.agentEvents)
+}
+
 func (m *Model) findSubTask(id string) *task.SubTask {
 	for _, st := range m.subTasks {
 		if st.ID == id {

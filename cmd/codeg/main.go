@@ -113,6 +113,10 @@ func main() {
 
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
 	}
+
+	// Cleanup: cancel context to kill any running subprocesses
+	cancel()
+	// Close agent events channel so goroutines exit
+	model.Close()
 }
