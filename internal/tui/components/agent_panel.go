@@ -53,7 +53,8 @@ func NewAgentPanel(width, height int) AgentPanel {
 }
 
 func (ap *AgentPanel) SetActive(taskID, subTaskID, taskName, phase string) {
-	if ap.subTaskID != subTaskID || ap.phase != phase {
+	// Only clear content when switching to a different sub-task
+	if ap.subTaskID != subTaskID {
 		ap.content = ""
 		ap.viewport.SetContent("")
 	}

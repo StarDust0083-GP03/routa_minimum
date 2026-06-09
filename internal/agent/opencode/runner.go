@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 
@@ -28,7 +29,12 @@ func NewRunner(serverURL string) *Runner {
 
 // Start launches "opencode run --dir <cwd> --format json <prompt>".
 func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRole) (*agent.StartResult, error) {
-	_ = role // opencode uses its own provider config for model selection
+	_ = role
+
+	// Ensure working directory exists
+	if err := os.MkdirAll(cwd, 0755); err != nil {
+		return nil, fmt.Errorf("create working directory %s: %w", cwd, err)
+	}
 
 	args := []string{
 		"run",

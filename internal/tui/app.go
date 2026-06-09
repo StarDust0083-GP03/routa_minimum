@@ -416,6 +416,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case subTasksLoadedMsg:
 		if msg.taskID == m.activeTaskID || m.selectedTaskID() == msg.taskID {
+			m.errorMsg = ""
 			m.subTasks = msg.subTasks
 			m.subTaskList.SetSubTasks(m.subTasks)
 			if m.subSelectedIdx >= len(m.subTasks) {
@@ -523,6 +524,8 @@ func (m Model) handleAgentDone(msg components.AgentDoneMsg, cmds *[]tea.Cmd) (te
 	}
 
 	if msg.Phase == task.PhaseCoding {
+		// Coding finished → clean up handle so verification can start
+		m.agentController.RemoveHandle(msg.SubTaskID)
 		// Coding done → ask OpenAI judge to determine if task is complete
 		if st != nil && taskObj != nil {
 			agentOutput := m.agentPanel.GetFullOutput()
