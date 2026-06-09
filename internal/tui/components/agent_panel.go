@@ -70,6 +70,12 @@ func (ap *AgentPanel) GetFullOutput() string { return ap.content }
 func (ap *AgentPanel) IsActive() bool { return ap.isActive }
 func (ap *AgentPanel) Phase() string { return ap.phase }
 
+// LoadOutput restores previously saved agent output for a sub-task.
+func (ap *AgentPanel) LoadOutput(output string) {
+	ap.content = output
+	ap.renderContent()
+}
+
 func (ap *AgentPanel) Append(text string) {
 	if ap.content != "" {
 		ap.content += "\n"

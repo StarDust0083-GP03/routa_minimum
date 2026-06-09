@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"codeg/internal/acp"
 	"codeg/internal/agent/core"
@@ -90,6 +91,7 @@ type Model struct {
 	activeTaskID   string
 	activeSubID    string
 	activePhase    string
+		subTaskOutputs map[string]string // per-subtask agent output
 
 	taskList    components.TaskList
 	taskDetail  components.TaskDetail
@@ -120,6 +122,7 @@ func NewModel(
 		selectedIndex:   0,
 		subSelectedIdx:  0,
 		agentEvents:     make(chan tea.Msg, 256),
+			subTaskOutputs:  make(map[string]string),
 	}
 }
 
@@ -325,15 +328,31 @@ func (m *Model) runSubTaskVerifyCmd(st *task.SubTask, taskObj *task.Task) tea.Cm
 
 // streamAgentEvents forwards ACP events from a handle to the TUI event channel.
 func (m *Model) streamAgentEvents(handle *core.AgentHandle, taskObj *task.Task, st *task.SubTask, phase string) {
+	var buf strings.Builder
 	for evt := range handle.Events {
+		text := agentEventText(evt)
+		if text != "" {
+			var prefix string
+			if phase == task.PhaseVerifying {
+				prefix = "[verify] "
+			} else {
+				prefix = "[coding] "
+			}
+			if buf.Len() > 0 {
+				buf.WriteString("\n")
+			}
+			buf.WriteString(prefix + text)
+		}
 		m.agentEvents <- components.AgentEventMsg{
 			TaskID: taskObj.ID, SubTaskID: st.ID, Phase: phase,
-			EventType: evt.Type, Text: agentEventText(evt),
+			EventType: evt.Type, Text: text,
 		}
 		if evt.Type == acp.EventTurnComplete {
 			break
 		}
 	}
+	// Save accumulated output for this sub-task
+	m.subTaskOutputs[st.ID] = buf.String()
 	m.agentEvents <- components.AgentDoneMsg{
 		TaskID: taskObj.ID, SubTaskID: st.ID, Phase: phase,
 	}
@@ -427,6 +446,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if st := m.subTaskList.SelectedSubTask(); st != nil {
 				m.subDetail.SetSubTask(st)
+				if out, ok := m.subTaskOutputs[st.ID]; ok {
+					m.agentPanel.LoadOutput(out)
+				} else {
+					m.agentPanel.LoadOutput("")
+				}
 			}
 		}
 		return m, nil
@@ -467,6 +491,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeSubID = msg.subTaskID
 		m.activePhase = msg.phase
 		m.agentPanel.SetActive(msg.taskID, msg.subTaskID, msg.taskName, msg.phase)
+		if stored, ok := m.subTaskOutputs[msg.subTaskID]; ok {
+			m.agentPanel.LoadOutput(stored)
+		}
 		m.errorMsg = ""
 		if msg.sessionID != "" {
 			cmds = append(cmds, m.linkSessionCmd(msg.taskID, msg.sessionID))
