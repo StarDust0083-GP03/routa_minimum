@@ -938,8 +938,10 @@ func (m Model) View() string {
 
 	taskListWidth := m.width / 4
 	subDetailWidth := m.width - taskListWidth - 4
-	topHeight := (m.height - 2) * 3 / 5
-	bottomHeight := (m.height - 2) - topHeight
+	// 3 fixed rows: statusBar + statusLine + helpBar
+	fixedRows := 3
+	topHeight := (m.height - fixedRows) * 3 / 5
+	bottomHeight := (m.height - fixedRows) - topHeight
 
 	// Task list
 	taskBorder := "#45475A"
@@ -1072,20 +1074,22 @@ func (m *Model) overlayBindDir() string {
 func (m *Model) initComponents() {
 	taskListWidth := m.width / 4
 	subRight := m.width - taskListWidth
-	topH := (m.height - 2) * 3 / 5
+	fixed := 3
+	topH := (m.height - fixed) * 3 / 5
 	m.taskList = components.NewTaskList(taskListWidth, topH)
 	m.taskDetail = components.NewTaskDetail(subRight, topH)
 	m.subTaskList = components.NewSubTaskList(subRight/2, topH-3)
 	m.subDetail = components.NewSubTaskDetail(subRight-subRight/2, topH-3)
-	m.agentPanel = components.NewAgentPanel(m.width, (m.height-2)-topH)
+	m.agentPanel = components.NewAgentPanel(m.width, (m.height-fixed)-topH)
 	m.createForm = components.NewCreateTaskForm()
 }
 
 func (m *Model) resizeComponents() {
 	taskListWidth := m.width / 4
 	subRight := m.width - taskListWidth
-	topH := (m.height - 2) * 3 / 5
-	botH := (m.height - 2) - topH
+	fixed := 3
+	topH := (m.height - fixed) * 3 / 5
+	botH := (m.height - fixed) - topH
 	m.taskList.Resize(taskListWidth-4, topH-2)
 	m.taskDetail.Resize(subRight-4, topH-2)
 	m.subTaskList.Resize(subRight/2-3, topH-5)
