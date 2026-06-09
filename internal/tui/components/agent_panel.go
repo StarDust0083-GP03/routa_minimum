@@ -140,19 +140,25 @@ func (ap *AgentPanel) Resize(width, height int) {
 
 func (ap *AgentPanel) renderContent() {
 	var statusText string
+	var header string
 	if ap.isActive {
+		prefix := ap.taskName
+		if prefix == "" {
+			prefix = "Agent Output"
+		}
 		if ap.phase == "verifying" {
 			statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#94E2D5")).Render("(verifying...)")
 		} else {
 			statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#F9E2AF")).Render("(coding...)")
 		}
+		header = agentPanelTitleStyle.Render(prefix) + " " + statusText
 	} else if ap.content != "" {
 		statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#A6ADC8")).Render("(done)")
+		header = agentPanelTitleStyle.Render("Agent Output") + " " + statusText
 	} else {
 		statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#585B70")).Render("(idle)")
+		header = agentPanelTitleStyle.Render("Agent Output") + " " + statusText
 	}
-
-	header := agentPanelTitleStyle.Render("Agent Output") + " " + statusText
 	fullContent := header + "\n\n"
 	if ap.content == "" {
 		fullContent += lipgloss.NewStyle().

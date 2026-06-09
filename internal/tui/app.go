@@ -1111,3 +1111,12 @@ func (m *Model) selectedTaskID() string {
 
 func (m *Model) GetTaskManager() *task.TaskManager     { return m.taskManager }
 func (m *Model) GetAgentController() *core.AgentController { return m.agentController }
+
+func (m *Model) findSubTask(id string) *task.SubTask {
+	for _, st := range m.subTasks {
+		if st.ID == id {
+			return st
+		}
+	}
+	return nil
+}
