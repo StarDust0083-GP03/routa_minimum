@@ -9,6 +9,7 @@ import (
 
 	"codeg/internal/acp"
 	"codeg/internal/agent"
+	codeglog "codeg/internal/log"
 	"codeg/internal/task"
 )
 
@@ -158,6 +159,7 @@ func (c *AgentController) IsRunning(subTaskID string) bool {
 // It starts a session, collects all agent output, cancels the session,
 // and returns the full response text for parsing.
 func (c *AgentController) PlanWithACP(ctx context.Context, cwd, prompt string) (string, error) {
+	codeglog.Info("controller: PlanWithACP cwd=%s prompt_len=%d", cwd, len(prompt))
 	result, err := c.runner.Start(ctx, cwd, prompt, acp.RoleDeveloper)
 	if err != nil {
 		return "", fmt.Errorf("start plan session: %w", err)

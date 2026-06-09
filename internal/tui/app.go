@@ -7,6 +7,7 @@ import (
 
 	"codeg/internal/acp"
 	"codeg/internal/agent/core"
+	codeglog "codeg/internal/log"
 	"codeg/internal/task"
 	"codeg/internal/tui/components"
 
@@ -290,7 +291,8 @@ func (m *Model) runSubTaskCodingCmd(st *task.SubTask, taskObj *task.Task) tea.Cm
 		if m.taskManager.SubTasks() != nil {
 			_, _ = m.taskManager.SubTasks().StartCoding(ctx, st.ID)
 		}
-		handle, err := m.agentController.StartSubTaskCoding(ctx, st, taskObj)
+		codeglog.Info("TUI: starting coding for subtask=%s dir=%s", st.ID, st.Directory)
+			handle, err := m.agentController.StartSubTaskCoding(ctx, st, taskObj)
 		if err != nil {
 			return agentErrorMsg{taskObj.ID, fmt.Errorf("failed to start coding: %w", err)}
 		}
@@ -308,7 +310,8 @@ func (m *Model) runSubTaskVerifyCmd(st *task.SubTask, taskObj *task.Task) tea.Cm
 		if m.taskManager.SubTasks() != nil {
 			_, _ = m.taskManager.SubTasks().StartVerifying(ctx, st.ID)
 		}
-		handle, err := m.agentController.StartSubTaskVerification(ctx, st, taskObj)
+		codeglog.Info("TUI: starting verification for subtask=%s", st.ID)
+			handle, err := m.agentController.StartSubTaskVerification(ctx, st, taskObj)
 		if err != nil {
 			return agentErrorMsg{taskObj.ID, fmt.Errorf("failed to start verification: %w", err)}
 		}
@@ -472,6 +475,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case agentErrorMsg:
+		codeglog.Error("TUI: agent error task=%s: %v", msg.taskID, msg.err)
 		m.errorMsg = msg.err.Error()
 		return m, nil
 
@@ -491,6 +495,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleVerifyJudgeResult(msg, &cmds)
 
 	case error:
+		codeglog.Error("TUI: error: %v", msg)
 		m.errorMsg = msg.Error()
 		return m, nil
 	}

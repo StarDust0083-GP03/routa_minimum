@@ -14,6 +14,7 @@ import (
 	opencodeagent "codeg/internal/agent/opencode"
 	"codeg/internal/config"
 	"codeg/internal/llm"
+	codeglog "codeg/internal/log"
 	"codeg/internal/session"
 	"codeg/internal/task"
 	"codeg/internal/tui"
@@ -33,6 +34,9 @@ func main() {
 			log.Fatalf("failed to open debug log: %v", err)
 		}
 		defer f.Close()
+		codeglog.Init()
+		defer codeglog.Close()
+		codeglog.Info("debug mode enabled, config=%s", *configPath)
 	}
 
 	// Load configuration

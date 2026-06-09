@@ -13,6 +13,7 @@ import (
 
 	"codeg/internal/acp"
 	"codeg/internal/agent"
+	codeglog "codeg/internal/log"
 )
 
 // Runner implements agent.AgentRunner by spawning opencode as a subprocess.
@@ -35,6 +36,8 @@ func (r *Runner) Start(ctx context.Context, cwd, prompt string, role acp.AgentRo
 	if err := os.MkdirAll(cwd, 0755); err != nil {
 		return nil, fmt.Errorf("create working directory %s: %w", cwd, err)
 	}
+
+	codeglog.Info("opencode: starting run cwd=%s", cwd)
 
 	args := []string{
 		"run",
