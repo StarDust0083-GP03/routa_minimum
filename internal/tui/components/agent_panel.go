@@ -1,9 +1,6 @@
-// Package components provides UI components for the TUI coding agent manager.
 package components
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -14,40 +11,33 @@ var (
 				Foreground(lipgloss.Color("#A6E3A1")).
 				Bold(true).
 				PaddingLeft(1)
-
 	agentChunkStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CDD6F4"))
-
 	agentToolStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#89B4FA"))
-
 	agentCodingStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#F9E2AF"))
-
 	agentVerifyStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#94E2D5"))
 )
 
-// AgentEventMsg represents a streaming event from a coding agent.
 type AgentEventMsg struct {
 	TaskID    string
 	SubTaskID string
-	Phase     string // "coding" or "verifying"
+	Phase     string
 	EventType string
 	Text      string
 }
 
-// AgentDoneMsg indicates the agent has completed a phase.
 type AgentDoneMsg struct {
 	TaskID    string
 	SubTaskID string
 	Phase     string
 }
 
-// AgentPanel displays real-time coding agent output.
 type AgentPanel struct {
 	viewport  viewport.Model
-	content   strings.Builder
+	content   string // plain string to avoid strings.Builder copy-on-write panic
 	taskID    string
 	subTaskID string
 	taskName  string
@@ -57,20 +47,14 @@ type AgentPanel struct {
 	height    int
 }
 
-// NewAgentPanel creates a new agent output panel.
 func NewAgentPanel(width, height int) AgentPanel {
 	vp := viewport.New(width, height)
-	return AgentPanel{
-		viewport: vp,
-		width:    width,
-		height:   height,
-	}
+	return AgentPanel{viewport: vp, width: width, height: height}
 }
 
-// SetActive sets the agent panel to show output for a sub-task phase.
 func (ap *AgentPanel) SetActive(taskID, subTaskID, taskName, phase string) {
 	if ap.subTaskID != subTaskID || ap.phase != phase {
-		ap.content.Reset()
+		ap.content = ""
 		ap.viewport.SetContent("")
 	}
 	ap.taskID = taskID
@@ -80,36 +64,19 @@ func (ap *AgentPanel) SetActive(taskID, subTaskID, taskName, phase string) {
 	ap.isActive = true
 }
 
-// SetInactive marks the agent as no longer running.
-func (ap *AgentPanel) SetInactive() {
-	ap.isActive = false
-}
+func (ap *AgentPanel) SetInactive() { ap.isActive = false }
+func (ap *AgentPanel) GetFullOutput() string { return ap.content }
+func (ap *AgentPanel) IsActive() bool { return ap.isActive }
+func (ap *AgentPanel) Phase() string { return ap.phase }
 
-// GetFullOutput returns the complete accumulated agent output text.
-func (ap *AgentPanel) GetFullOutput() string {
-	return ap.content.String()
-}
-
-// IsActive returns whether an agent is running.
-func (ap *AgentPanel) IsActive() bool {
-	return ap.isActive
-}
-
-// Phase returns the current phase.
-func (ap *AgentPanel) Phase() string {
-	return ap.phase
-}
-
-// Append appends a line of output from the agent.
 func (ap *AgentPanel) Append(text string) {
-	if ap.content.Len() > 0 {
-		ap.content.WriteString("\n")
+	if ap.content != "" {
+		ap.content += "\n"
 	}
-	ap.content.WriteString(text)
+	ap.content += text
 	ap.renderContent()
 }
 
-// HandleEvent processes an agent event message.
 func (ap *AgentPanel) HandleEvent(event AgentEventMsg) {
 	var phasePrefix string
 	switch event.Phase {
@@ -135,7 +102,6 @@ func (ap *AgentPanel) HandleEvent(event AgentEventMsg) {
 	}
 }
 
-// Update handles messages.
 func (ap *AgentPanel) Update(msg tea.Msg) (AgentPanel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case AgentEventMsg:
@@ -161,12 +127,8 @@ func (ap *AgentPanel) Update(msg tea.Msg) (AgentPanel, tea.Cmd) {
 	return *ap, nil
 }
 
-// View renders the agent panel.
-func (ap *AgentPanel) View() string {
-	return ap.viewport.View()
-}
+func (ap *AgentPanel) View() string { return ap.viewport.View() }
 
-// Resize updates the component dimensions.
 func (ap *AgentPanel) Resize(width, height int) {
 	ap.width = width
 	ap.height = height
@@ -183,23 +145,21 @@ func (ap *AgentPanel) renderContent() {
 		} else {
 			statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#F9E2AF")).Render("(coding...)")
 		}
-	} else if ap.content.Len() > 0 {
+	} else if ap.content != "" {
 		statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#A6ADC8")).Render("(done)")
 	} else {
 		statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("#585B70")).Render("(idle)")
 	}
 
 	header := agentPanelTitleStyle.Render("Agent Output") + " " + statusText
-
 	fullContent := header + "\n\n"
-	if ap.content.Len() == 0 {
+	if ap.content == "" {
 		fullContent += lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#585B70")).
 			Render("  No agent output. Press 'r' on a sub-task to start the coding agent.")
 	} else {
-		fullContent += ap.content.String()
+		fullContent += ap.content
 	}
-
 	ap.viewport.SetContent(fullContent)
 	ap.viewport.GotoBottom()
 }
