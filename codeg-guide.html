@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codeg — TUI Coding Agent Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg:       #1e1e2e; --surface:  #313244; --overlay:  #45475a;
+    --ink:      #cdd6f4; --ink-soft: #a6adc8; --muted:    #585b70;
+    --blue:     #89b4fa; --green:    #a6e3a1; --yellow:   #f9e2af;
+    --red:      #f38ba8; --mauve:    #cba6f7; --teal:     #94e2d5;
+    --peach:    #fab387; --pink:     #f5c2e7; --cyan:     #89dceb;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); color: var(--ink); scroll-behavior: smooth; }
+  body { font: 16px/1.6 var(--sans); max-width: 1060px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+
+  h1 { font-size: 2.4rem; font-weight: 800; color: #fff; margin-bottom: .2rem; letter-spacing: -.02em; }
+  .subtitle { font-size: 1.1rem; color: var(--ink-soft); margin-bottom: 2.5rem; }
+  h2 { font-size: 1.4rem; font-weight: 700; color: var(--blue); margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 2px solid var(--overlay); }
+  h3 { font-size: 1.1rem; font-weight: 600; color: var(--mauve); margin: 1.8rem 0 .6rem; }
+  h4 { font-size: .95rem; font-weight: 600; color: var(--teal); margin: 1.2rem 0 .4rem; }
+  p, li { color: var(--ink); margin: .4rem 0; }
+  ul, ol { padding-left: 1.6rem; margin: .5rem 0; }
+  li { margin: .25rem 0; }
+  a { color: var(--blue); }
+  code { font-family: var(--mono); font-size: .88em; background: var(--surface); padding: .15em .4em; border-radius: 3px; color: var(--peach); }
+  pre { font-family: var(--mono); font-size: .8rem; background: var(--surface); border: 1px solid var(--overlay); padding: 1rem 1.2rem; border-radius: var(--radius); overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--ink); }
+
+  .diagram { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; margin: 1rem 0; overflow-x: auto; display: flex; justify-content: center; }
+  .diagram .mermaid { width: 100%; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .85rem; }
+  th { font-weight: 600; color: var(--blue); text-align: left; padding: .5rem .8rem; border-bottom: 2px solid var(--overlay); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+  td { padding: .45rem .8rem; border-bottom: 1px solid var(--overlay); color: var(--ink-soft); }
+  tr:hover td { background: var(--surface); }
+  td:first-child { color: var(--ink); font-family: var(--mono); font-size: .8rem; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1rem 0; }
+  .card { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; border-top: 3px solid var(--blue); }
+  .card.green { border-top-color: var(--green); }
+  .card.yellow { border-top-color: var(--yellow); }
+  .card.red { border-top-color: var(--red); }
+  .card h3 { margin: 0 0 .6rem; font-size: 1rem; color: #fff; }
+
+  .flow-steps { display: flex; gap: .5rem; margin: 1rem 0; flex-wrap: wrap; }
+  .flow-step { flex: 1; min-width: 100px; background: var(--surface); padding: .8rem; text-align: center; border-radius: var(--radius); position: relative; }
+  .flow-step .num { font-size: 1.6rem; font-weight: 800; color: var(--blue); }
+  .flow-step .label { font-size: .75rem; font-weight: 600; color: #fff; margin: .2rem 0; }
+  .flow-step .detail { font-size: .7rem; color: var(--ink-soft); }
+  .flow-step::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 1.2rem; z-index: 1; }
+  .flow-step:last-child::after { content: ""; }
+
+  .tui { background: var(--bg); border: 2px solid var(--overlay); border-radius: var(--radius); overflow: hidden; margin: 1rem 0; font-family: var(--mono); font-size: .73rem; line-height: 1.6; }
+  .tui-bar { background: var(--blue); color: var(--bg); padding: .2rem .8rem; font-weight: 700; display: flex; justify-content: space-between; }
+  .tui-main { display: flex; }
+  .tui-col { padding: .4rem .7rem; }
+  .tui-col.left { width: 22%; border-right: 2px solid var(--overlay); }
+  .tui-col.mid-l { width: 18%; border-right: 2px solid var(--overlay); }
+  .tui-col.mid-r { width: 25%; border-right: 2px solid var(--overlay); }
+  .tui-col.right { width: 35%; }
+  .tui-title { color: var(--blue); font-weight: 700; }
+  .tui-subtitle { color: var(--mauve); font-weight: 700; }
+  .tui-row { padding: .05rem 0; }
+  .tui-help { background: var(--surface); color: var(--muted); padding: .2rem .8rem; border-top: 1px solid var(--overlay); }
+  .tui-help b { color: var(--blue); }
+  .tui-status { background: #181825; color: var(--yellow); padding: .15rem .8rem; font-weight: 600; }
+  .c-y { color: var(--yellow); } .c-g { color: var(--green); } .c-r { color: var(--red); }
+  .c-m { color: var(--muted); } .c-b { color: var(--blue); } .c-p { color: var(--mauve); }
+  .c-w { color: #fff; } .c-t { color: var(--teal); }
+
+  @media (max-width: 800px) {
+    body { padding: 1rem .75rem; }
+    h1 { font-size: 1.6rem; }
+    .two-col { grid-template-columns: 1fr; }
+    .flow-steps { flex-direction: column; }
+    .flow-step::after { content: "↓"; right: 50%; top: auto; bottom: -14px; transform: translateX(50%); }
+    .flow-step:last-child::after { content: ""; }
+    .tui-main { flex-direction: column; }
+    .tui-col.left, .tui-col.mid-l, .tui-col.mid-r, .tui-col.right { width: 100%; border-right: none; border-bottom: 1px solid var(--overlay); }
+  }
+</style>
+</head>
+<body>
+
+<h1>codeg</h1>
+<p class="subtitle">TUI Coding Agent Manager — Multi-Agent Task Orchestration with opencode Backend</p>
+
+<div class="two-col">
+  <div class="card">
+    <h3>What is codeg?</h3>
+    <p>A terminal-based task manager that orchestrates <strong>opencode</strong> coding agents. Decompose complex tasks into sub-tasks, execute them with two-phase (coding → verification) workflow, and judge results with LLM.</p>
+  </div>
+  <div class="card green">
+    <h3>Quick Start</h3>
+    <pre><code>export OPENAI_API_KEY="sk-xxx"
+export OPENAI_BASE_URL="https://api.deepseek.com"
+export CODEG_LLM_MODEL="deepseek-chat"
+go run ./cmd/codeg/</code></pre>
+  </div>
+</div>
+
+<!-- Architecture -->
+<h2>1. Architecture</h2>
+<div class="diagram"><pre class="mermaid">
+graph TB
+    subgraph UI["🖥 TUI Layer"]
+        APP["app.go<br/>Bubble Tea"]
+        PLAN["plan_mode.go<br/>Decomposition UI"]
+        SUBL["subtask_list.go<br/>SubTask Tree"]
+        SUBD["subtask_detail.go<br/>Phase Progress"]
+        APANEL["agent_panel.go<br/>Session Output"]
+    end
+
+    subgraph Domain["📦 Domain Layer"]
+        TM["task/manager.go<br/>TaskManager"]
+        STM["task/subtask_manager.go<br/>SubTaskManager"]
+        PLNR["task/planner.go<br/>Planner"]
+        JUDGE["task/judge.go<br/>Completion Judge"]
+        LLM["llm/openai.go<br/>OpenAI Client"]
+    end
+
+    subgraph Agent["🤖 Agent Layer"]
+        CTRL["agent/core/controller.go<br/>AgentController"]
+        RUNNER["agent/opencode/runner.go<br/>opencode Runner"]
+        LOG["log/log.go<br/>Debug Logger"]
+    end
+
+    subgraph Ext["🌐 External"]
+        OPSUB["opencode run<br/>Subprocess"]
+        OAI["OpenAI API<br/>Planning + Judging"]
+        DB["SQLite<br/>~/.codeg/codeg.db"]
+    end
+
+    APP --> PLAN & SUBL & SUBD & APANEL
+    APP --> TM & STM
+    TM --> STM & PLNR
+    PLNR --> LLM & CTRL
+    CTRL --> RUNNER
+    RUNNER --> OPSUB
+    LLM --> OAI
+    JUDGE --> LLM
+    STM --> DB
+    TM --> DB
+    APP --> LOG
+
+    style UI fill:#313244,stroke:#cba6f7,color:#cdd6f4
+    style Domain fill:#313244,stroke:#a6e3a1,color:#cdd6f4
+    style Agent fill:#313244,stroke:#f9e2af,color:#cdd6f4
+    style Ext fill:#1e1e2e,stroke:#585b70,color:#a6adc8
+</pre></div>
+
+<!-- Data Flow -->
+<h2>2. Complete Workflow</h2>
+<div class="flow-steps">
+  <div class="flow-step"><div class="num">1</div><div class="label">Create Task</div><div class="detail">n → Title + Objective</div></div>
+  <div class="flow-step"><div class="num">2</div><div class="label">Bind Dirs</div><div class="detail">b → Working directories</div></div>
+  <div class="flow-step"><div class="num">3</div><div class="label">Plan</div><div class="detail">p → ACP/LLM decomposition</div></div>
+  <div class="flow-step"><div class="num">4</div><div class="label">Code</div><div class="detail">r → opencode agent</div></div>
+  <div class="flow-step"><div class="num">5</div><div class="label">Judge</div><div class="detail">OpenAI → completed?</div></div>
+  <div class="flow-step"><div class="num">6</div><div class="label">Verify</div><div class="detail">Auto → verification agent</div></div>
+  <div class="flow-step"><div class="num">7</div><div class="label">Judge</div><div class="detail">OpenAI → passed?</div></div>
+  <div class="flow-step"><div class="num">8</div><div class="label">Next/Done</div><div class="detail">Auto-next or complete</div></div>
+</div>
+
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+    participant U as 👤 User
+    participant T as 🖥 TUI
+    participant C as 🎮 Controller
+    participant O as 🤖 opencode
+    participant L as 🧠 OpenAI
+
+    Note over U,L: Phase 1 — Planning
+    U->>T: Press 'p'
+    T->>O: opencode run (plan prompt)
+    O-->>T: JSON sub-task list
+    T->>U: Show plan UI (edit/confirm)
+    U->>T: Press Enter
+
+    Note over U,L: Phase 2 — Coding
+    U->>T: Select sub-task, press 'r'
+    T->>C: StartSubTaskCoding
+    C->>O: opencode run (coding prompt)
+    loop Streaming
+        O-->>T: agent_message_chunk
+        O-->>T: tool_use (bash, read, write)
+    end
+    O-->>T: turn_complete
+    T->>L: Judge: COMPLETED / STUCK / FAILED
+    L-->>T: COMPLETED ✅
+
+    Note over U,L: Phase 3 — Verification
+    T->>C: StartSubTaskVerification
+    C->>O: opencode run (verify prompt)
+    O-->>T: verification output
+    T->>L: Judge: PASSED / FAILED
+    L-->>T: PASSED ✅
+    T->>U: Auto-start next sub-task
+</pre></div>
+
+<!-- TUI Layout -->
+<h2>3. TUI Layout</h2>
+<div class="tui">
+  <div class="tui-bar"><span>codeg | 2 tasks · 5 subtasks | dashboard</span><span>q: quit</span></div>
+  <div class="tui-main">
+    <div class="tui-col left">
+      <div class="tui-title">Tasks</div>
+      <div class="tui-row c-m">Test CLI</div>
+      <div class="tui-row c-m" style="padding-left:.6rem;">└ API Server</div>
+    </div>
+    <div class="tui-col mid-l">
+      <div class="tui-subtitle">SubTasks</div>
+      <div class="tui-row c-w">◉ Setup project</div>
+      <div class="tui-row c-m" style="font-size:.68rem;">  /tmp/codeg</div>
+      <div class="tui-row c-y" style="font-size:.68rem;">  coding...</div>
+      <div class="tui-row c-m">○ Core logic</div>
+      <div class="tui-row c-m" style="font-size:.68rem;">  planned</div>
+    </div>
+    <div class="tui-col mid-r">
+      <div class="tui-subtitle">Detail</div>
+      <div class="tui-row"><span class="c-b">Title:</span> <span class="c-w">Setup project</span></div>
+      <div class="tui-row"><span class="c-b">Dir:</span> <span class="c-g">/tmp/codeg</span></div>
+      <div class="tui-row"><span class="c-b">Status:</span> <span class="c-y">coding</span></div>
+      <div class="tui-row"><span class="c-g">● Coding</span> <span class="c-m">──</span> <span class="c-m">○ Verify</span> <span class="c-m">──</span> <span class="c-m">○ Done</span></div>
+    </div>
+    <div class="tui-col right">
+      <div class="tui-title">Agent Output (coding...)</div>
+      <div class="tui-row c-y">[coding] --- agent started ---</div>
+      <div class="tui-row c-b">[coding] [tool] bash: ls</div>
+      <div class="tui-row c-m">  main.go utils.go</div>
+      <div class="tui-row c-b">[coding] [tool] write</div>
+      <div class="tui-row c-g">[coding] --- phase complete ---</div>
+    </div>
+  </div>
+  <div class="tui-status">● Coding: Setup project | /tmp/codeg  [c] cancel</div>
+  <div class="tui-help"><b>↑/↓</b> navigate <b>tab</b> panel <b>p</b> plan <b>r</b> run <b>f</b> verify <b>c</b> cancel <b>n</b> new <b>b</b> bind <b>q</b> quit</div>
+</div>
+
+<!-- Keybindings -->
+<h2>4. Keybindings</h2>
+<table>
+  <thead><tr><th>Key</th><th>Mode</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>n</code></td><td>Dashboard</td><td>Create new task (title + objective)</td></tr>
+    <tr><td><code>b</code></td><td>Dashboard</td><td>Bind working directory to selected task</td></tr>
+    <tr><td><code>p</code></td><td>Dashboard</td><td>Plan mode — decompose task into sub-tasks via ACP</td></tr>
+    <tr><td><code>r</code></td><td>Dashboard</td><td>Run coding agent on selected/next planned sub-task</td></tr>
+    <tr><td><code>f</code></td><td>Dashboard</td><td>Force verification on selected sub-task</td></tr>
+    <tr><td><code>c</code></td><td>Dashboard</td><td>Cancel currently running agent</td></tr>
+    <tr><td><code>d</code></td><td>Dashboard</td><td>Delete selected task (confirmation required)</td></tr>
+    <tr><td><code>Enter</code></td><td>Plan</td><td>Confirm sub-task plan → create all sub-tasks</td></tr>
+    <tr><td><code>e</code></td><td>Plan</td><td>Edit selected sub-task</td></tr>
+    <tr><td><code>+/-</code></td><td>Plan</td><td>Add / remove sub-task</td></tr>
+    <tr><td><code>↑/↓</code></td><td>All</td><td>Navigate tasks or sub-tasks</td></tr>
+    <tr><td><code>Tab</code></td><td>Dashboard</td><td>Switch focus: tasks → sub-tasks → agent output</td></tr>
+    <tr><td><code>1/2/3</code></td><td>Dashboard</td><td>Focus panel 1 (tasks), 2 (sub-tasks), 3 (agent)</td></tr>
+    <tr><td><code>q</code></td><td>Dashboard</td><td>Quit (kills subprocesses)</td></tr>
+  </tbody>
+</table>
+
+<!-- Configuration -->
+<h2>5. Configuration</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>Environment Variables</h3>
+    <table>
+      <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+      <tr><td><code>OPENAI_API_KEY</code></td><td>-</td><td>LLM API key</td></tr>
+      <tr><td><code>OPENAI_BASE_URL</code></td><td>api.openai.com</td><td>DeepSeek / OpenAI base URL</td></tr>
+      <tr><td><code>CODEG_LLM_MODEL</code></td><td>gpt-4o-mini</td><td>Model for planning + judging</td></tr>
+      <tr><td><code>CODEG_DB_PATH</code></td><td>~/.codeg/codeg.db</td><td>SQLite database</td></tr>
+      <tr><td><code>CODEG_ACP_COMMAND</code></td><td>opencode serve</td><td>ACP command</td></tr>
+      <tr><td><code>CODEG_ACP_PORT</code></td><td>4200</td><td>ACP server port</td></tr>
+    </table>
+  </div>
+  <div class="card yellow">
+    <h3>Config File</h3>
+    <p><code>~/.codeg/config.json</code>:</p>
+    <pre><code>{
+  "dbPath": "~/.codeg/codeg.db",
+  "acpServerUrl": "",
+  "acp": { "command": "opencode serve", "port": 4200 },
+  "openai": { "apiKey": "", "baseUrl": "", "model": "" },
+  "planning": { "enabled": true }
+}</code></pre>
+  </div>
+</div>
+
+<!-- Status Line -->
+<h2>6. Status Line Reference</h2>
+<table>
+  <thead><tr><th>Display</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><span style="color:var(--yellow);">● Coding: Setup | /tmp/codeg</span></td><td>Agent is actively coding this sub-task</td></tr>
+    <tr><td><span style="color:var(--teal);">◷ Verifying: Test | /tmp/test</span></td><td>Verification agent is running</td></tr>
+    <tr><td><span style="color:var(--green);">▶ Ready — press [r] to run "xxx"</span></td><td>Sub-task is planned, ready to execute</td></tr>
+    <tr><td><span style="color:var(--peach);">⚠ Stuck — press [r] to retry "xxx"</span></td><td>Agent couldn't complete, can retry</td></tr>
+    <tr><td><span style="color:var(--red);">Error message</span></td><td>Something went wrong</td></tr>
+  </tbody>
+</table>
+
+<!-- File Map -->
+<h2>7. Project File Map</h2>
+<table>
+  <thead><tr><th>File</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>cmd/codeg/main.go</code></td><td>Entry point, config loading, wiring</td></tr>
+    <tr><td><code>internal/tui/app.go</code></td><td>Bubble Tea model: Update/View cycle</td></tr>
+    <tr><td><code>internal/tui/components/agent_panel.go</code></td><td>Streaming agent output display</td></tr>
+    <tr><td><code>internal/tui/components/plan_mode.go</code></td><td>Plan mode: LLM-suggested sub-tasks UI</td></tr>
+    <tr><td><code>internal/tui/components/subtask_list.go</code></td><td>Sub-task tree with status dots</td></tr>
+    <tr><td><code>internal/tui/components/subtask_detail.go</code></td><td>Phase progress bar, session info</td></tr>
+    <tr><td><code>internal/task/planner.go</code></td><td>LLM decomposition + response parsing</td></tr>
+    <tr><td><code>internal/task/judge.go</code></td><td>OpenAI completion/verification judging</td></tr>
+    <tr><td><code>internal/task/subtask_manager.go</code></td><td>Sub-task lifecycle + phase transitions</td></tr>
+    <tr><td><code>internal/task/subtask_store.go</code></td><td>SQLite CRUD for sub-tasks</td></tr>
+    <tr><td><code>internal/agent/core/controller.go</code></td><td>Agent lifecycle: start/cancel/handle</td></tr>
+    <tr><td><code>internal/agent/opencode/runner.go</code></td><td>opencode subprocess runner + event parser</td></tr>
+    <tr><td><code>internal/llm/openai.go</code></td><td>OpenAI-compatible API client</td></tr>
+    <tr><td><code>internal/log/log.go</code></td><td>Debug logging to ~/.codeg/codeg.log</td></tr>
+    <tr><td><code>internal/config/config.go</code></td><td>Config loader + env var overrides</td></tr>
+  </tbody>
+</table>
+
+<!-- Run Commands -->
+<h2>8. Development Commands</h2>
+<table>
+  <thead><tr><th>Command</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>go run ./cmd/codeg/</code></td><td>Run TUI</td></tr>
+    <tr><td><code>go run ./cmd/codeg/ --debug</code></td><td>Run with debug logging</td></tr>
+    <tr><td><code>go test -short ./...</code></td><td>Unit tests (175)</td></tr>
+    <tr><td><code>go test -run Integration ./...</code></td><td>Integration tests (require opencode)</td></tr>
+    <tr><td><code>go build -o bin/codeg ./cmd/codeg/</code></td><td>Build binary</td></tr>
+    <tr><td><code>tail -f ~/.codeg/codeg.log</code></td><td>Watch debug log</td></tr>
+  </tbody>
+</table>
+
+<hr style="border: none; border-top: 1px solid var(--overlay); margin: 3rem 0 1rem;">
+<p style="font-size:.78rem; color:var(--muted);">
+  codeg v2 · 175 tests · Go + Bubble Tea + opencode + SQLite<br>
+  Catppuccin Mocha theme
+</p>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: {
+  darkMode: true, background: '#1e1e2e', primaryColor: '#89b4fa', primaryTextColor: '#1e1e2e',
+  primaryBorderColor: '#89b4fa', lineColor: '#585b70', secondaryColor: '#313244', tertiaryColor: '#45475a',
+  textColor: '#cdd6f4', nodeBorder: '#45475a', clusterBkg: '#313244', clusterBorder: '#45475a',
+  titleColor: '#cba6f7', edgeLabelBackground: '#313244', fontSize: '14px'
+}});</script>
+</body>
+</html>
